@@ -123,6 +123,7 @@ class MotorType:
     DMH6215 = "DMH6215"
     DMH6215MIT = "DMH6215MIT"
     DM3507 = "DM3507"
+    DM_FLOW_WHEEL = "DM_FLOW_WHEEL"
 
     @classmethod
     def get_motor_constants(cls, motor_type: str) -> MotorConstants:
@@ -146,7 +147,7 @@ class MotorType:
                 # max kp 500
                 # max kd 5
             )
-        elif motor_type == cls.DM4310V:
+        elif motor_type in [cls.DM4310V, cls.DM_FLOW_WHEEL, cls.DMH6215]:
             return MotorConstants(
                 POSITION_MAX=3.1415926,
                 POSITION_MIN=-3.1415926,
@@ -165,15 +166,6 @@ class MotorType:
                 TORQUE_MIN=-28,
                 # max kp 500
                 # max kd 5
-            )
-        elif motor_type == cls.DMH6215:
-            return MotorConstants(
-                POSITION_MAX=12.5,
-                POSITION_MIN=-12.5,
-                VELOCITY_MAX=45,
-                VELOCITY_MIN=-45,
-                TORQUE_MAX=10,
-                TORQUE_MIN=-10,
             )
         elif motor_type == cls.DMH6215MIT:
             return MotorConstants(

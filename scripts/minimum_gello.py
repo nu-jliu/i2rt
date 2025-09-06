@@ -18,7 +18,7 @@ class ServerRobot:
 
     def __init__(self, robot: Robot, port: str):
         self._robot = robot
-        self._server = portal.Server(DEFAULT_ROBOT_PORT)
+        self._server = portal.Server(port)
         print(f"Robot Sever Binding to {port}, Robot: {robot}")
 
         self._server.bind("num_dofs", self._robot.num_dofs)
@@ -102,8 +102,8 @@ class YAMLeaderRobot:
 
 @dataclass
 class Args:
-    gripper: Literal["crank_4310", "linear_3507", "yam_teaching_handle"] = "yam_teaching_handle"
-    mode: Literal["follower", "leader", "visualizer"] = "follower"
+    gripper: Literal["crank_4310", "linear_3507", "linear_4310", "yam_teaching_handle", "no_gripper"] = "yam_teaching_handle"
+    mode: Literal["follower", "leader", "visualizer_local", "visualizer_remote"] = "follower"
     server_host: str = "localhost"
     server_port: int = DEFAULT_ROBOT_PORT
     can_channel: str = "can0"
@@ -115,16 +115,16 @@ def main(args: Args) -> None:
 
     gripper_type = GripperType.from_string_name(args.gripper)
 
-    if args.mode != "visualizer":
+    if "remote" not in args.mode:
         robot = get_yam_robot(channel=args.can_channel, gripper_type=gripper_type)
 
     if args.mode == "follower":
-        server_robot = ServerRobot(robot, DEFAULT_ROBOT_PORT)
+        server_robot = ServerRobot(robot, args.server_port)
         server_robot.serve()
     elif args.mode == "leader":
         robot = YAMLeaderRobot(robot)
         robot_current_kp = robot._robot._kp
-        client_robot = ClientRobot(DEFAULT_ROBOT_PORT, host=args.server_host)
+        client_robot = ClientRobot(args.server_port, host=args.server_host)
 
         # sync the robot state
         current_joint_pos, current_button = robot.get_info()
@@ -164,11 +164,11 @@ def main(args: Args) -> None:
                 robot.command_joint_pos(current_follower_joint_pos[:6])
 
             time.sleep(0.01)
-    elif args.mode == "visualizer":
+    elif "visualizer" in args.mode:
         import mujoco
         import mujoco.viewer
-
-        client_robot = ClientRobot(DEFAULT_ROBOT_PORT, host=args.server_host)
+        if args.mode == "visualizer_remote":
+            robot = ClientRobot(args.server_port, host=args.server_host)
         xml_path = gripper_type.get_xml_path()
         model = mujoco.MjModel.from_xml_path(xml_path)
         data = mujoco.MjData(model)
@@ -185,7 +185,7 @@ def main(args: Args) -> None:
 
             while viewer.is_running():
                 step_start = time.time()
-                joint_pos = client_robot.get_joint_pos()
+                joint_pos = robot.get_joint_pos()
                 data.qpos[:] = joint_pos[: model.nq]
 
                 # sync the model state

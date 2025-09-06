@@ -11,10 +11,46 @@ A Python client library for interacting with [I2RT](https://i2rt.com/) products,
 - Visualization and gravity compensation using MuJoCo physics engine
 - Gripper force control mode and auto calibration
 
+## Examples
+
+We are continuously expanding our collection of examples with detailed documentation under [`examples/`](./examples). These examples are designed to help you get started quickly and demonstrate common use cases.
+
+## Available Examples
+
+### [Bimanual Lead Follower](./examples/bimanual_lead_follower/README.md)
+Demonstrates coordinated control of two robotic arms in a leader-follower configuration.
+
+### [Record Replay Trajectory](./examples/record_replay_trajectory/README.md)
+Shows how to record and replay robotic trajectories for automation and testing.
+
+### [Single Motor Position PD Control](./examples/single_motor_position_pd_control/README.md)
+Basic position control implementation using PD controller for single motor operations.
+
+## Contributing
+
+If you have suggestions for new examples or want to contribute your own, feel free to:
+- Open an issue to request specific examples
+- Submit a pr with your contribution
+- Share feedback on existing examples
+
+We welcome community contributions that help others learn and implement robotic solutions!
+
 ## Installation
 
+### Install uv from scratch
+
+```
+git clone https://github.com/i2rt-robotics/i2rt.git && cd i2rt
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv venv --python 3.11
+source .venv/bin/activate
+```
+
 ```bash
-pip install -e .
+sudo apt update
+sudo apt install build-essential python3-dev linux-headers-$(uname -r)
+uv pip install -e .
 ```
 
 ## Basic CAN Usage
@@ -40,6 +76,11 @@ We have provided a convenience script to reset all CAN devices. Simply run
 sh scripts/reset_all_can.sh
 ```
 
+If you see this output after entering the can reset command, you may need to unplug/replug the usb can device to completely reset the canable.
+```bash
+RTNETLINK answers: Device or resource busy
+```
+
 If you want the CAN interface to be automatically enabled on startup, you can run:
 ```bash
 sudo sh devices/install_devices.sh
@@ -54,14 +95,14 @@ This script installs a udev rule that will automatically bring up all CAN device
 ## Gripper type
 
 Currently YAM supports Four different grippers:
-![YAM supported Grippers](./assets/photos/yam_three_grippers.png)
+![YAM supported Grippers](./assets/photos/yam_grippers.png)
 
 | Gripper Name        | Description |
 |---------------------|-------------|
 | `crank_4310`        | Zero-linkage crank gripper, optimized for minimizing gripper width. |
 | `linear_3507`       | Linear gripper with smaller DM3507 motor. Lightweight, but requires calibration or starting with the gripper in the closed configuration. |
 | `linear_4310`       | Linear gripper with the standard DM4310 motor (not shown on photo above). Slightly heavier but can provide a bit more gripping force. |
-| `yam_teaching_handle`| Used for the leader arm setup. Includes a trigger to control the gripper and two customizable buttons that can be mapped to different functions. |
+| `yam_teaching_handle`| Used for the leader arm setup. Includes a trigger to control the gripper and two customizable buttons that can be mapped to different functions. For more information related to the teaching handle, please see [yam_handle_readme.md](doc/yam_handle_readme.md)|
 
 The linear gripper requires an additional calibration step because its motor must rotate more than 2π radians to complete the full stroke.
 
@@ -97,9 +138,9 @@ To launch the follower robot run.
 python scripts/minimum_gello.py --gripper $YOUR_FOLLOWER_ARM_GRIPPER --mode follower
 ```
 
-To launch the robot mujoco visualizer run
+To launch the robot with mujoco visualizer run
 ```bash
-python scripts/minimum_gello.py --mode visualizer
+python scripts/minimum_gello.py --mode visualizer_local
 ```
 
 ---
@@ -156,6 +197,7 @@ However, we understand that this feature may not always be desirable, especially
 To remove the timeout feature, run the following command.
 ```bash
 python i2rt/motor_config_tool/set_timeout.py --channel can0
+python i2rt/motor_config_tool/set_timeout.py --channel can0
 ```
 
 To set the timeout feature, run the following command.
@@ -187,7 +229,22 @@ robot = get_yam_robot(channel="can0", zero_gravity_mode=False)
 
 In this mode, the current joint positions (`qpos`) are used as the PD target, keeping the arm stable in its initial state.
 
+One important way to reduce the risk of the arm going out of control is to avoid entering zero-gravity mode.
+
+By default, the arm initializes in zero-gravity mode. As mentioned earlier, if the arm does not have a timeout but the gravity compensation loop fails, the motor controller will continue applying a constant torque. This can lead to unexpected and potentially unsafe behavior.
+
+To prevent this, you should always set a PD target. With a PD target, the motor controller ensures the arm reaches a stable state rather than drifting under uncontrolled torque.
+
+You can disable the default zero-gravity initialization like this:
+```python
+robot = get_yam_robot(channel="can0", zero_gravity_mode=False)
+```
+
+In this mode, the current joint positions (`qpos`) are used as the PD target, keeping the arm stable in its initial state.
+
 ## Flow Base Usage
+
+For unboxing instructions and hardware setup details, please refer to the [FlowBase README](./i2rt/flow_base/README.md).
 
 ### Running the demo
 You can control your flow base using a game controller.
@@ -211,6 +268,7 @@ while time.time() - start_time < 1:
     user_cmd = (0.1, 0, 0)
     vehicle.set_target_velocity(user_cmd, frame="local")
 ```
+
 
 ## Contributing
 We welcome contributions! Please make a PR.

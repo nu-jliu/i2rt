@@ -30,8 +30,8 @@ sudo vim /etc/udev/rules.d/90-can.rules
 ```
 add
 ```
-SUBSYSTEM=="net", ACTION=="add", ATTRS{serial}=="004E00275548501220373234", NAME="can_follow_l"
-SUBSYSTEM=="net", ACTION=="add", ATTRS{serial}=="0031005F5548501220373234", NAME="can_follow_r"
+SUBSYSTEM=="net", ACTION=="add", ATTRS{serial}=="004E00275548501220373234", NAME="can_follower_l"
+SUBSYSTEM=="net", ACTION=="add", ATTRS{serial}=="0031005F5548501220373234", NAME="can_follower_r"
 ```
 
 **Important:** The name should start with `can` (for USB-CAN adapters) or `en`/`eth` (for EtherCAT-CAN adapters). The maximum length for a CAN interface name is 13 characters.

@@ -26,10 +26,20 @@ class Gamepad:
         print(f"Number of Axes: {self.joy.get_numaxes()}")
         print(f"Number of Buttons: {self.joy.get_numbuttons()}")
 
+    def get_button_reading(self):
+        pygame.event.pump()
+        key_mode = self.joy.get_button(12)
+        key_left_2 = self.joy.get_button(8)
+        key_left_1 = self.joy.get_button(6)
+        return dict(
+            key_mode=key_mode,
+            key_left_2=key_left_2,
+            key_left_1=key_left_1,
+        )
+
     def get_user_cmd(self):
         pygame.event.pump()
-    # Read inputs
-        start = self.joy.get_button(7)  # Example button
+        # Read inputs
         x = self.joy.get_axis(1)  # Left stick Y-axis
         y = self.joy.get_axis(0)  # Left stick X-axis
         th = self.joy.get_axis(2)  # Right stick X-axis

@@ -20,9 +20,10 @@ import numpy as np
 from dm_env.specs import Array
 from ruckig import ControlInterface, InputParameter, OutputParameter, Result, Ruckig
 from threadpoolctl import threadpool_limits
-
+import portal
 from i2rt.motor_drivers.dm_driver import ControlMode, DMChainCanInterface
 
+BASE_DEFAULT_PORT = 11323
 POLICY_CONTROL_FREQ = 10
 POLICY_CONTROL_PERIOD = 1.0 / POLICY_CONTROL_FREQ
 h_x, h_y = 0.2 * np.array([1.0, 1.0, -1.0, -1.0]), 0.2 * np.array([-1.0, 1.0, 1.0, -1.0])
@@ -106,7 +107,7 @@ class VehicleMotorController:
             steering_motor_id = caster_idx * 2 - 1
             drive_motor_id = caster_idx * 2
             motor_list.append([steering_motor_id, "DM4310V"])
-            motor_list.append([drive_motor_id, "DMH6215"])
+            motor_list.append([drive_motor_id, "DM_FLOW_WHEEL"])
 
         self.motor_interface = DMChainCanInterface(
             motor_list,
@@ -219,6 +220,7 @@ class Vehicle(Robot):
         self.dq = np.zeros(num_motors)
 
         # Operational space (global frame)
+        self._lock = threading.Lock()
         self.num_dofs = 3  # (x, y, theta)
         self.x = np.zeros(self.num_dofs)
         self.dx = np.zeros(self.num_dofs)
@@ -300,18 +302,19 @@ class Vehicle(Robot):
             self.C_pinv = np.linalg.solve(self.C_p.T @ self.C_p, self.CpT_Cqinv)
 
         # Odometry
-        dx_local = self.C_pinv @ self.dq
-        theta_avg = self.x[2] + 0.5 * dx_local[2] * CONTROL_PERIOD
-        R = np.array(
-            [
-                [math.cos(theta_avg), -math.sin(theta_avg), 0.0],
-                [math.sin(theta_avg), math.cos(theta_avg), 0.0],
-                [0.0, 0.0, 1.0],
-            ]
-        )
-        self.dx = R @ dx_local
-        self.x += self.dx * CONTROL_PERIOD
-
+        with self._lock:
+            dx_local = self.C_pinv @ self.dq
+            theta_avg = self.x[2] + 0.5 * dx_local[2] * CONTROL_PERIOD
+            R = np.array(
+                [
+                    [math.cos(theta_avg), -math.sin(theta_avg), 0.0],
+                    [math.sin(theta_avg), math.cos(theta_avg), 0.0],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+            self.dx = R @ dx_local
+            self.x += self.dx * CONTROL_PERIOD
+        time.sleep(0.0005)
     def start_control(self) -> None:
         if self.control_loop_thread is None:
             print("To initiate a new control loop, please create a new instance of Vehicle.")
@@ -433,6 +436,18 @@ class Vehicle(Robot):
                 command["frame"] = FrameType(frame)
             self.command_queue.put(command, block=False)
 
+    def get_odometry(self, input_dict = {}) -> Dict[str, Any]:
+        with self._lock:
+            return {
+                "translation": self.x[:2],
+                "rotation": self.x[2],
+            }
+
+    def reset_odometry(self,input_dict = {}) -> None:
+        with self._lock:
+            self.x = np.zeros(self.num_dofs)
+            self.dx = np.zeros(self.num_dofs)
+
     def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
         self._enqueue_command(CommandType.VELOCITY, velocity, frame)
 
@@ -466,21 +481,61 @@ if __name__ == "__main__":
     import time
     import argparse
     from i2rt.utils.gamepad_utils import Gamepad
-
+    import pygame
+    import sys
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", type=str, default="can0")
 
     # Initialize pygame and joystick
     pygame.init()
     pygame.joystick.init()
+    if pygame.joystick.get_count() == 0:
+        print("No joystick/gamepad connected!")
+        exit()
+
+    joy = pygame.joystick.Joystick(0)
     CALIBRATION_RETRY_DELAY = 1
     DEADZONE = 0.05
     args = parser.parse_args()
 
-    max_vel = np.array([0.4, 0.4, 1.2])
-    max_accel = np.array([0.5, 0.5, 1])
+    max_vel = np.array([0.8, 0.8, 3.0])
+    max_accel = np.array([0.8, 0.8, 3.0])
 
     vehicle = Vehicle(max_vel=max_vel, max_accel=max_accel, channel=args.channel)
+
+
+    remote_base_command = np.zeros(3)
+
+    class TimeoutRemoteBaseCommand:
+        def __init__(self, timeout: float = 0.2):
+            self.timeout = timeout
+            self.last_update_time = time.time()-1000000
+            self.command = np.zeros(3)
+            self.frame = "local"
+            self._lock = threading.Lock()
+
+        def remote_set_target_velocity(self,input_dict) -> None:
+            target_velocity = input_dict["target_velocity"]
+            frame = input_dict["frame"]
+            with self._lock:
+                self.command = target_velocity
+                self.frame = frame
+                self.last_update_time = time.time()
+
+        def is_command_valid(self):
+            return time.time() - self.last_update_time < self.timeout
+
+        def get_command(self):
+            with self._lock:
+                return self.command, self.frame
+    remote_base_command = TimeoutRemoteBaseCommand()
+    # setup server for remote calls
+    server = portal.Server(BASE_DEFAULT_PORT)
+    server.bind("get_odometry", vehicle.get_odometry)
+    server.bind("reset_odometry", vehicle.reset_odometry)
+    server.bind("set_target_velocity", remote_base_command.remote_set_target_velocity)
+    server.start(block=False)
+
 
     print(f"Joystick Name: {joy.get_name()}")
     print(f"Number of Axes: {joy.get_numaxes()}")
@@ -501,20 +556,53 @@ if __name__ == "__main__":
 
     # Main loop to read joystick inputs
     gamepad = Gamepad()
+    gamepad_command_frame = 'local'
+    gamepad_command_override = True
 
+    last_gampad_mode_togged = False
     count = 0
     try:
         while True:
-            user_cmd = gamepad.get_user_cmd()
+            gamepad_cmd = gamepad.get_user_cmd()
+            gamepad_button = gamepad.get_button_reading()
+
+            if gamepad_button['key_mode'] and not last_gampad_mode_togged:
+                last_gampad_mode_togged = True
+                gamepad_command_frame = 'global' if gamepad_command_frame == 'local' else 'local'
+            else:
+                last_gampad_mode_togged = False
+            if gamepad_button['key_left_1']:
+                vehicle.reset_odometry()
+
+            is_remote_command_valid = remote_base_command.is_command_valid()
+
+            if is_remote_command_valid:
+                user_cmd, user_frame = remote_base_command.get_command()
+                gamepad_command_override = False
+
+                if gamepad_button['key_left_2']:
+                    gamepad_command_override = True
+            else:
+                gamepad_command_override = True
             if not vehicle.running():
                 print("Motor interface is not running, exiting...")
                 print(f"Please check the E stop or the motor connection. ")
                 break
+            if gamepad_command_override:
+                cmd = gamepad_cmd
+                frame = gamepad_command_frame
+            else:
+                cmd = user_cmd
+                frame = user_frame
             if count % 20 == 0:
                 # print up 1 float point
-                print(f"user_cmd: {user_cmd[0]:.1f}, {user_cmd[1]:.1f}, {user_cmd[2]:.1f}")
+                # print(f"frame: {frame}, cmd: {cmd[0]:.1f}, {cmd[1]:.1f}, {cmd[2]:.1f}")
+                sys.stdout.write(
+                    f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f}"
+                )
+                sys.stdout.flush()
             count += 1
-            vehicle.set_target_velocity(user_cmd*max_vel, frame="local")
+            vehicle.set_target_velocity(cmd*max_vel, frame=frame)
 
             time.sleep(0.02)
     except KeyboardInterrupt:

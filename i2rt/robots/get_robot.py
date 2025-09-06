@@ -30,6 +30,9 @@ def get_yam_robot(
     if gripper_type == GripperType.YAM_TEACHING_HANDLE:
         with_gripper = False
         with_teaching_handle = True
+    if gripper_type == GripperType.NO_GRIPPER:
+        with_gripper = False
+        with_teaching_handle = False
 
     model_path = gripper_type.get_xml_path()
     motor_list = [
