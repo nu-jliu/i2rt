@@ -20,7 +20,7 @@ Follow the detailed visual documentation provided in this [unboxing guide](https
 4. Ensure the **CAN bus selection switch** is in the **UP position**
 
 <p align="center">
-  <img src="assets/flow_base_panel.png" alt="Flow Base Control Panel" width="50%">
+  <img src="assets/flow_base_panel.jpg" alt="Flow Base Control Panel" width="50%">
 </p>
 
 ⚠️ **Note**: The small screen firmware may cause slower Pi boot times, but you can SSH into the system quickly once it's ready.
@@ -55,7 +55,7 @@ The exposed RJ45 network interface is preconfigured with static IP `172.6.2.20`.
 ## Remote Control
 
 <p align="center">
-  <img src="assets/remote.png" alt="Flow Base Remote" width="50%">
+  <img src="assets/remote.jpg" alt="Flow Base Remote" width="50%">
 </p>
 
 ### Control Layout
