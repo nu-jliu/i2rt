@@ -19,8 +19,8 @@ We are continuously expanding our collection of examples with detailed documenta
 
 Quick-start demos available under [`examples/`](./examples):
 
-- [Bimanual Lead Follower](./examples/bimanual_lead_follower/README.md) — coordinated dual-arm control  
-- [Record Replay Trajectory](./examples/record_replay_trajectory/README.md) — record & replay motions  
+- [Bimanual Lead Follower](./examples/bimanual_lead_follower/README.md) — coordinated dual-arm control
+- [Record Replay Trajectory](./examples/record_replay_trajectory/README.md) — record & replay motions
 - [Single Motor PD Control](./examples/single_motor_position_pd_control/README.md) — basic motor PD
 
 ## Contributing

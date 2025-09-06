@@ -1,15 +1,25 @@
 ## 🔹 Backup and Restore Raspberry Pi SD Card with PiShrink
 
 ### 1. Find the SD card mounting location
-```bash lsblk ```
+```bash
+lsblk
+```
 
 ### 2. Create image from SD card
 
-```bash sudo dd if=/dev/sdX of=pi_system.img bs=4M status=progress sync ``` *(replace `/dev/sdX` with your SD card device, e.g. `/dev/sdc`)*
+```bash
+sudo dd if=/dev/sdX of=pi_system.img bs=4M status=progress
+sync
+```
+*(replace `/dev/sdX` with your SD card device, e.g. `/dev/sdc`)*
 
 ### 3. Flash image into new SD card
 
-```bash sudo wipefs -a /dev/sdX sudo dd if=pi_system.img of=/dev/sdX bs=4M status=progress sync ```
+```bash
+sudo wipefs -a /dev/sdX
+sudo dd if=pi_system.img of=/dev/sdX bs=4M status=progress
+sync
+```
 
 ### 4. Eject SD card
 
