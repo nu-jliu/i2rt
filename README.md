@@ -15,16 +15,13 @@ A Python client library for interacting with [I2RT](https://i2rt.com/) products,
 
 We are continuously expanding our collection of examples with detailed documentation under [`examples/`](./examples). These examples are designed to help you get started quickly and demonstrate common use cases.
 
-## Available Examples
+## Examples
 
-### [Bimanual Lead Follower](./examples/bimanual_lead_follower/README.md)
-Demonstrates coordinated control of two robotic arms in a leader-follower configuration.
+Quick-start demos available under [`examples/`](./examples):
 
-### [Record Replay Trajectory](./examples/record_replay_trajectory/README.md)
-Shows how to record and replay robotic trajectories for automation and testing.
-
-### [Single Motor Position PD Control](./examples/single_motor_position_pd_control/README.md)
-Basic position control implementation using PD controller for single motor operations.
+- [Bimanual Lead Follower](./examples/bimanual_lead_follower/README.md) — coordinated dual-arm control  
+- [Record Replay Trajectory](./examples/record_replay_trajectory/README.md) — record & replay motions  
+- [Single Motor PD Control](./examples/single_motor_position_pd_control/README.md) — basic motor PD
 
 ## Contributing
 
