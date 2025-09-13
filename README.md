@@ -226,19 +226,6 @@ robot = get_yam_robot(channel="can0", zero_gravity_mode=False)
 
 In this mode, the current joint positions (`qpos`) are used as the PD target, keeping the arm stable in its initial state.
 
-One important way to reduce the risk of the arm going out of control is to avoid entering zero-gravity mode.
-
-By default, the arm initializes in zero-gravity mode. As mentioned earlier, if the arm does not have a timeout but the gravity compensation loop fails, the motor controller will continue applying a constant torque. This can lead to unexpected and potentially unsafe behavior.
-
-To prevent this, you should always set a PD target. With a PD target, the motor controller ensures the arm reaches a stable state rather than drifting under uncontrolled torque.
-
-You can disable the default zero-gravity initialization like this:
-```python
-robot = get_yam_robot(channel="can0", zero_gravity_mode=False)
-```
-
-In this mode, the current joint positions (`qpos`) are used as the PD target, keeping the arm stable in its initial state.
-
 ## Flow Base Usage
 
 For unboxing instructions and hardware setup details, please refer to the [FlowBase README](./i2rt/flow_base/README.md).
