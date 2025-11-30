@@ -1,4 +1,3 @@
-import enum
 import logging
 import os
 import struct
@@ -6,11 +5,20 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Protocol, Tuple
-from i2rt.motor_drivers.utils import MotorInfo, MotorConstants, FeedbackFrameInfo, MotorErrorCode, MotorType, uint_to_float, float_to_uint, MotorInfo, ReceiveMode
+
 import can
 import numpy as np
-from i2rt.motor_drivers.can_interface import CanInterface
 
+from i2rt.motor_drivers.can_interface import CanInterface
+from i2rt.motor_drivers.utils import (
+    FeedbackFrameInfo,
+    MotorErrorCode,
+    MotorInfo,
+    MotorType,
+    ReceiveMode,
+    float_to_uint,
+    uint_to_float,
+)
 from i2rt.utils.utils import RateRecorder
 
 log_level = os.getenv("LOGLEVEL", "ERROR").upper()
@@ -83,7 +91,7 @@ class PassiveEncoderReader:
     def _parse_encoder_message(self, message: can.Message) -> PassiveEncoderInfo:
         # Standard format
         struct_format = "!B h h B"
-        device_id, position, velocity, digital_inputs = struct.unpack(struct_format, message.data)
+        _device_id, position, velocity, digital_inputs = struct.unpack(struct_format, message.data)
 
         # Convert position and velocity to radians
         position_rad = position * 2 * np.pi / 4096
@@ -360,13 +368,13 @@ class DMChainCanInterface(MotorChain):
         get_same_bus_device_driver: Optional[Callable] = None,
         use_buffered_reader: bool = False,  # buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader
     ):
-        assert not use_buffered_reader, (
-            "buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader"
-        )
+        assert (
+            not use_buffered_reader
+        ), "buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader"
         assert len(motor_list) > 0
-        assert len(motor_list) == len(motor_offset) == len(motor_direction), (
-            f"len{len(motor_list)}, len{len(motor_offset)}, len{len(motor_direction)}"
-        )
+        assert (
+            len(motor_list) == len(motor_offset) == len(motor_direction)
+        ), f"len{len(motor_list)}, len{len(motor_offset)}, len{len(motor_direction)}"
         self.motor_list = motor_list
         self.motor_offset = np.array(motor_offset)
         self.motor_direction = np.array(motor_direction)
@@ -422,7 +430,7 @@ class DMChainCanInterface(MotorChain):
             init_mode = True
 
         for idx, motor_info in enumerate(self.motor_list):
-            motor_id, motor_type = motor_info
+            _motor_id, motor_type = motor_info
             const = MotorType.get_motor_constants(motor_type)
             position_min = const.POSITION_MIN
             position_max = const.POSITION_MAX

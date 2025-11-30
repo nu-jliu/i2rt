@@ -13,7 +13,7 @@ from i2rt.motor_drivers.dm_driver import (
     MotorInfo,
 )
 from i2rt.robots.robot import Robot
-from i2rt.robots.utils import GripperForceLimiter, GripperType, JointMapper
+from i2rt.robots.utils import GripperForceLimiter, GripperType, JointMapper, detect_gripper_limits
 from i2rt.utils.mujoco_utils import MuJoCoKDL
 
 
@@ -77,7 +77,7 @@ class MotorChainRobot(Robot):
         gripper_type: GripperType = GripperType.CRANK_4310,
         temp_record_flag: bool = False,  # whether record the motor's temperature
         enable_gripper_calibration: bool = False,  # whether to auto-detect gripper limits
-        zero_gravity_mode:bool = True,
+        zero_gravity_mode: bool = True,
         # below are calibration parameters
         test_torque: float = 0.5,  # test torque for gripper detection (Nm)
         test_duration: float = 2.0,  # max test duration for each direction (s)
@@ -86,17 +86,15 @@ class MotorChainRobot(Robot):
     ) -> None:
         self.temp_record_flag = temp_record_flag
         if gripper_index is not None:
-            assert gripper_index == len(motor_chain) - 1, (
-                "Gripper index should be the last one, but got {gripper_index}"
-            )
+            assert (
+                gripper_index == len(motor_chain) - 1
+            ), "Gripper index should be the last one, but got {gripper_index}"
 
             # Auto-detect gripper limits if enabled and gripper_limits is None
             print(
                 f"initializing motorchain robot, gripper_limits: {gripper_limits}, enable_gripper_calibration: {enable_gripper_calibration}"
             )
             if gripper_limits is None and enable_gripper_calibration:
-                from i2rt.robots.utils import detect_gripper_limits
-
                 logger = logging.getLogger(__name__)
                 logger.info("Auto-detecting gripper limits...")
                 detected_limits = detect_gripper_limits(
@@ -118,8 +116,7 @@ class MotorChainRobot(Robot):
                 logger = logging.getLogger(__name__)
                 logger.info(f"Using provided gripper limits: {gripper_limits}")
 
-
-        self._last_gripper_command_qpos = 1 # initialize as fully open
+        self._last_gripper_command_qpos = 1  # initialize as fully open
         assert clip_motor_torque >= 0.0
         self._clip_motor_torque = clip_motor_torque
         self.motor_chain = motor_chain
@@ -164,7 +161,7 @@ class MotorChainRobot(Robot):
             else np.array(kd)
         )
 
-        self._joint_limits:Optional[np.ndarray] = None
+        self._joint_limits: Optional[np.ndarray] = None
         if xml_path is not None:
             self.xml_path = os.path.expanduser(xml_path)
             self.kdl = MuJoCoKDL(self.xml_path)
@@ -178,9 +175,9 @@ class MotorChainRobot(Robot):
         # override the xml joint limits with the provided joint_limits
         if joint_limits is not None:
             joint_limits = np.array(joint_limits)
-            assert np.all(joint_limits[:, 0] < joint_limits[:, 1]), (
-                "Lower joint limits must be smaller than upper limits"
-            )
+            assert np.all(
+                joint_limits[:, 0] < joint_limits[:, 1]
+            ), "Lower joint limits must be smaller than upper limits"
             self._joint_limits = joint_limits
         self._command_lock = threading.Lock()
         self._state_lock = threading.Lock()
@@ -200,6 +197,7 @@ class MotorChainRobot(Robot):
         if not zero_gravity_mode:
             # set current qpos as target pos with the default PD parameters
             self.command_joint_pos(self._joint_state.pos)
+
     def __repr__(self) -> str:
         return f"MotorChainRobot(motor_chain={self.motor_chain})"
 
@@ -208,14 +206,16 @@ class MotorChainRobot(Robot):
         If violated, raise an error.
         """
         if self._joint_state is None or self._joint_limits is None:
-            raise RuntimeError(f"{self}: Joint limits:{self._joint_limits} or joint state:{self._joint_state} are not set.")
+            raise RuntimeError(
+                f"{self}: Joint limits:{self._joint_limits} or joint state:{self._joint_state} are not set."
+            )
 
         current_pos = self._joint_state.pos
 
         # Check arm joints (exclude gripper if present)
         if self._gripper_index is not None:
             # Only check arm joints, not the gripper
-            arm_pos = current_pos[:self._gripper_index]
+            arm_pos = current_pos[: self._gripper_index]
             arm_limits = self._joint_limits
         else:
             # Check all joints
@@ -226,7 +226,6 @@ class MotorChainRobot(Robot):
         lower_limits = arm_limits[:, 0] - buffer_rad
         upper_limits = arm_limits[:, 1] + buffer_rad
 
-
         # Find joints that violate lower limits
         lower_violations = arm_pos < lower_limits
         # Find joints that violate upper limits
@@ -235,7 +234,7 @@ class MotorChainRobot(Robot):
         if np.any(lower_violations) or np.any(upper_violations):
             violation_details = []
 
-            for i, (pos, lower, upper) in enumerate(zip(arm_pos, lower_limits, upper_limits)):
+            for i, (pos, lower, upper) in enumerate(zip(arm_pos, lower_limits, upper_limits, strict=False)):
                 if pos < lower:
                     violation_details.append(f"Joint {i}: {pos:.4f} < {lower:.4f} (lower limit)")
                 elif pos > upper:
@@ -244,7 +243,9 @@ class MotorChainRobot(Robot):
             violation_msg = "; ".join(violation_details)
             # turn off the main motor control thread as well.
             self.motor_chain.running = False
-            raise RuntimeError(f"{self}: Joint limit violation detected: {violation_msg}, the root reason should be zero position offset. possible solution: 1. move the arm to zero position and power cycle the robot. 2. Recalibrate the motor zero position.")
+            raise RuntimeError(
+                f"{self}: Joint limit violation detected: {violation_msg}, the root reason should be zero position offset. possible solution: 1. move the arm to zero position and power cycle the robot. 2. Recalibrate the motor zero position."
+            )
 
     def get_robot_info(self) -> Dict[str, Any]:
         """Get the robot information, such as kp, kd, joint limits, gripper limits, etc."""
@@ -551,9 +552,9 @@ if __name__ == "__main__":
             # print(robot.get_observations())
             time.sleep(1)
     elif args.operation_mode == "test_gripper":
-        assert gripper_type != GripperType.YAM_TEACHING_HANDLE, (
-            "test_gripper is not supported for YAM_TEACHING_HANDLE, teaching handle is a passive device"
-        )
+        assert (
+            gripper_type != GripperType.YAM_TEACHING_HANDLE
+        ), "test_gripper is not supported for YAM_TEACHING_HANDLE, teaching handle is a passive device"
         for _ in range(30):
             for gripper_pos in [0.8, 0.0]:
                 print(f"gripper_pos: {gripper_pos}")

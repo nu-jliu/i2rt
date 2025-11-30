@@ -102,7 +102,9 @@ class YAMLeaderRobot:
 
 @dataclass
 class Args:
-    gripper: Literal["crank_4310", "linear_3507", "linear_4310", "yam_teaching_handle", "no_gripper"] = "yam_teaching_handle"
+    gripper: Literal["crank_4310", "linear_3507", "linear_4310", "yam_teaching_handle", "no_gripper"] = (
+        "yam_teaching_handle"
+    )
     mode: Literal["follower", "leader", "visualizer_local", "visualizer_remote"] = "follower"
     server_host: str = "localhost"
     server_port: int = DEFAULT_ROBOT_PORT
@@ -167,6 +169,7 @@ def main(args: Args) -> None:
     elif "visualizer" in args.mode:
         import mujoco
         import mujoco.viewer
+
         if args.mode == "visualizer_remote":
             robot = ClientRobot(args.server_port, host=args.server_host)
         xml_path = gripper_type.get_xml_path()

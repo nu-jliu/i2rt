@@ -1,7 +1,9 @@
-import can
+import logging
 import time
 from typing import List, Optional
-import logging
+
+import can
+
 from i2rt.motor_drivers.utils import ReceiveMode
 
 
