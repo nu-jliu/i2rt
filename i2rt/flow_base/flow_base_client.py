@@ -1,41 +1,46 @@
 import argparse
-import portal
-from i2rt.flow_base.flow_base_controller import BASE_DEFAULT_PORT
-import numpy as np
-import time
-import threading
 import sys
+import threading
+import time
+from typing import Any
+
+import numpy as np
+import portal
+
+from i2rt.flow_base.flow_base_controller import BASE_DEFAULT_PORT
+
 
 class FlowBaseClient:
     def __init__(self, host: str = "localhost"):
         self.client = portal.Client(f"{host}:{BASE_DEFAULT_PORT}")
-        self.command = {'target_velocity': np.array([0.0, 0.0, 0.0]), 'frame': 'local'}
+        self.command = {"target_velocity": np.array([0.0, 0.0, 0.0]), "frame": "local"}
         self._lock = threading.Lock()
         self.running = True
         self._thread = threading.Thread(target=self._update_velocity)
         self._thread.start()
 
-    def _update_velocity(self):
+    def _update_velocity(self) -> None:
         while self.running:
             with self._lock:
                 self.client.set_target_velocity(self.command).result()
             time.sleep(0.02)
 
-    def get_odometry(self):
+    def get_odometry(self) -> Any:
         return self.client.get_odometry({}).result()
 
-
-    def reset_odometry(self):
+    def reset_odometry(self) -> Any:
         return self.client.reset_odometry({}).result()
 
-    def set_target_velocity(self, target_velocity: np.ndarray, frame: str = "local"):
+    def set_target_velocity(self, target_velocity: np.ndarray, frame: str = "local") -> None:
         with self._lock:
-            self.command['target_velocity'] = target_velocity
-            self.command['frame'] = frame
-    def close(self):
+            self.command["target_velocity"] = target_velocity
+            self.command["frame"] = frame
+
+    def close(self) -> None:
         self.running = False
         self._thread.join()
         self.client.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -57,8 +62,6 @@ if __name__ == "__main__":
         client.set_target_velocity(np.array([0.0, 0.0, 0.1]), "local")
         while True:
             odo_reading = client.get_odometry()
-            sys.stdout.write(
-                f"\r translation: {odo_reading['translation']} rotation: {odo_reading['rotation']}"
-            )
+            sys.stdout.write(f"\r translation: {odo_reading['translation']} rotation: {odo_reading['rotation']}")
             sys.stdout.flush()
             time.sleep(0.02)
