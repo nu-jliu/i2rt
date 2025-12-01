@@ -59,6 +59,8 @@ The exposed RJ45 network interface is preconfigured with static IP `172.6.2.20`.
 </p>
 
 ### Control Layout
+[TODO:] lift motor use right joystick up down to control (maybe add bigger deadzone to pervent unresired movement)
+
 - **Left joystick**: Translation (XY movement)
 - **Right joystick**: Rotation
 - **Left1**: Reset odometry
@@ -117,6 +119,7 @@ python i2rt/flow_base/flow_base_client.py --command test_command --host 172.6.2.
 ```
 
 ### Safety Features
+[TODO:] Make sure this works with the linear rail as well
 - API command timeout prevents runaway behavior
 - FlowBaseClient automatically maintains command heartbeat
 - Base stops automatically when client disconnects
