@@ -90,10 +90,27 @@ class VehicleMotorController:
         self,
         steering_offset: List[float],
         steering_direction: List[int],
-        channel: str = "can_flow_base",
+        channel_name_or_motor_interface: str | DMChainCanInterface = "can_flow_base",
         num_casters: int = 4,
     ):
         self.num_casters = num_casters
+        if isinstance(channel_name_or_motor_interface, str):
+            self.motor_interface = self._initialize_motor_chain(channel_name_or_motor_interface)
+        else:
+            self.motor_interface = channel_name_or_motor_interface
+        
+        self.motor_offsets = self.motor_interface.motor_offsets
+        self.motor_directions = self.motor_interface.motor_directions
+        self.kd = np.array(
+            [
+                2,
+                2,
+            ]
+            * self.num_casters
+        )
+
+        print(f"dm chain can interface: {self.motor_interface} initialized")
+    def _initialize_motor_chain(self) -> None:
         motor_list = []
         motor_offsets = []
 
@@ -110,7 +127,7 @@ class VehicleMotorController:
             motor_list.append([steering_motor_id, "DM4310V"])
             motor_list.append([drive_motor_id, "DM_FLOW_WHEEL"])
 
-        self.motor_interface = DMChainCanInterface(
+        motor_interface = DMChainCanInterface(
             motor_list,
             motor_offsets,
             motor_directions,
@@ -118,18 +135,8 @@ class VehicleMotorController:
             motor_chain_name="holonomic_base",
             control_mode=ControlMode.VEL,
         )
-        self.motor_offsets = motor_offsets
-        self.motor_directions = motor_directions
-        self.kd = np.array(
-            [
-                2,
-                2,
-            ]
-            * self.num_casters
-        )
-
-        print(f"dm chain can interface: {self.motor_interface} initialized")
-
+        return motor_interface
+    
     def get_state(self) -> Dict[str, Any]:
         motor_states = self.motor_interface.read_states()
         steer_pos, drive_pos = [], []
@@ -477,6 +484,26 @@ class Vehicle(Robot):
     def running(self) -> bool:
         return self.caster_module_controller.motor_interface.running
 
+class LinearRailVehicle(Vehicle):
+    def __init__(
+        self,
+        vehicle_max_vel: Tuple[float, float, float] = (0.5, 0.5, 1.57),
+        vehicle_max_accel: Tuple[float, float, float] = (0.25, 0.25, 0.79),
+        lift_max_vel: float = 14.0,
+        channel: str = "can_flow_base",
+        auto_start: bool = True,
+    ):
+        # TODO: initialize DM motor chain here 
+        motor_chain = 
+        self.lift = 
+    
+        super().__init__(vehicle_max_vel, vehicle_max_accel, motor_chain, auto_start)
+    
+    def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
+        raise NotImplementedError("LinearRailVehicle does not support set_target_velocity")
+    
+    def get_lift_state(self) -> Dict[str, Any]:
+        return self.lift.get_state()
 
 if __name__ == "__main__":
     import argparse

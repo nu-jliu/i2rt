@@ -11,15 +11,17 @@ from i2rt.flow_base.flow_base_controller import BASE_DEFAULT_PORT
 
 
 class FlowBaseClient:
-    def __init__(self, host: str = "localhost"):
+    def __init__(self, host: str = "localhost", with_linear_rail: bool = False):
+        self.with_linear_rail = with_linear_rail
         self.client = portal.Client(f"{host}:{BASE_DEFAULT_PORT}")
-        self.command = {"target_velocity": np.array([0.0, 0.0, 0.0]), "frame": "local"}
+        self.num_dofs = 3 if not self.with_linear_rail else 4
+        self.command = {"target_velocity": np.zeros(self.num_dofs), "frame": "local"}
         self._lock = threading.Lock()
         self.running = True
-        self._thread = threading.Thread(target=self._update_velocity)
+        self._thread = threading.Thread(target=self._update_command)
         self._thread.start()
 
-    def _update_velocity(self) -> None:
+    def _update_command(self) -> None:
         while self.running:
             with self._lock:
                 self.client.set_target_velocity(self.command).result()
@@ -32,14 +34,22 @@ class FlowBaseClient:
         return self.client.reset_odometry({}).result()
 
     def set_target_velocity(self, target_velocity: np.ndarray, frame: str = "local") -> None:
+        """_summary_
+
+        Args:
+            target_velocity (np.ndarray): speed settings for the base and lift motor [x, y, theta, lift_velocity(optional)]
+            frame (str, optional): base frame of the target velocity
+        """
+        assert target_velocity.shape == (self.num_dofs,), (
+            "Target velocity must have shape (3,)"
+            if not self.with_linear_rail
+            else "Target velocity must have shape (4,)"
+        )
+        assert frame in ["local", "global"], "Frame must be either local or global"
+
         with self._lock:
             self.command["target_velocity"] = target_velocity
             self.command["frame"] = frame
-
-    def close(self) -> None:
-        self.running = False
-        self._thread.join()
-        self.client.close()
 
 
 if __name__ == "__main__":
