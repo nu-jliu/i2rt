@@ -501,6 +501,15 @@ class Vehicle(Robot):
     def running(self) -> bool:
         return self.caster_module_controller.motor_interface.running
 
+    def close(self) -> None:
+        """Clean up resources: stop control loop and set motors to neutral."""
+        try:
+            self.stop_control()
+            self.caster_module_controller.set_neutral()
+            logger.info("Vehicle closed successfully")
+        except Exception as e:
+            logger.error(f"Vehicle close error: {e}")
+
 
 class LinearRailVehicle(Vehicle):
     def __init__(
@@ -636,11 +645,11 @@ class LinearRailVehicle(Vehicle):
         """
         self.linear_rail.set_brake(engaged)
 
-    def cleanup(self) -> None:
+    def close(self) -> None:
         """Clean up resources: stop linear rail and engage brake."""
         if hasattr(self, "linear_rail"):
             self.linear_rail.cleanup()
-        super().cleanup()
+        super().close()
 
 
 if __name__ == "__main__":
@@ -680,6 +689,15 @@ if __name__ == "__main__":
         channel=args.channel,
         auto_home=True,
     )
+    
+    # Register cleanup function to ensure brake is engaged on exit
+    def close_vehicle():
+        try:
+            vehicle.close()
+        except Exception as e:
+            logger.error(f"Error during atexit close: {e}")
+    
+    atexit.register(close_vehicle)
 
     remote_base_command = np.zeros(4)  # Support 4D: [x, y, theta, linear_rail]
 
@@ -743,6 +761,8 @@ if __name__ == "__main__":
     last_gampad_mode_togged = False
     count = 0
     DEFAULT_RAIL_VELOCITY = 0.5  # Default linear rail velocity multiplier
+    last_rail_log_time = time.time()
+    RAIL_LOG_INTERVAL = 1.0  # Log linear rail position every 1 second
     try:
         while True:
             gamepad_cmd = gamepad.get_user_cmd()  # 3D: [x, y, theta]
@@ -759,16 +779,19 @@ if __name__ == "__main__":
             if gamepad_button["key_left_1"]:
                 vehicle.reset_odometry()
 
-            # Convert lift command (hat) to linear rail velocity (normalized [-1, 1])
-            # Hat: (0, 1) = up, (0, -1) = down, (0, 0) = stop
-            lift_vel = 0.0
-            if lift_cmd[1] > 0:  # Up
-                lift_vel = DEFAULT_RAIL_VELOCITY
-            elif lift_cmd[1] < 0:  # Down
-                lift_vel = -DEFAULT_RAIL_VELOCITY
 
-            # Combine base command (3D) with linear rail command (1D) to form 4D command
-            # All values are normalized [-1, 1] range
+            lift_vel = 0.0
+            if joy.get_numaxes() > 3:
+                right_stick_y = joy.get_axis(3)  # Right stick Y-axis
+                # Apply deadzone and invert (up = negative axis value = positive velocity)
+                if np.abs(right_stick_y) > DEADZONE:
+                    lift_vel = -right_stick_y  # Invert: up (negative axis) = positive velocity
+            else:
+                if lift_cmd[1] > 0:  # Up
+                    lift_vel = DEFAULT_RAIL_VELOCITY
+                elif lift_cmd[1] < 0:  # Down
+                    lift_vel = -DEFAULT_RAIL_VELOCITY
+
             cmd_4d = np.append(gamepad_cmd, lift_vel)
 
             is_remote_command_valid = remote_base_command.is_command_valid()
@@ -796,6 +819,23 @@ if __name__ == "__main__":
                 # print(f"frame: {frame}, cmd: {cmd[0]:.1f}, {cmd[1]:.1f}, {cmd[2]:.1f}, rail: {cmd[3]:.1f}")
                 sys.stdout.write(f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f} rail: {cmd[3]:.1f}")
                 sys.stdout.flush()
+            
+            # Log linear rail position and velocity every 1 second
+            current_time = time.time()
+            if current_time - last_rail_log_time >= RAIL_LOG_INTERVAL:
+                try:
+                    if hasattr(vehicle, "linear_rail"):
+                        rail_state = vehicle.get_linear_rail_state()
+                        position = rail_state.get("position")
+                        velocity = rail_state.get("velocity")
+                        if position is not None and velocity is not None:
+                            print(f"Linear rail - pos: {position:.4f} rad, vel: {velocity:.4f} rad/s")
+                        else:
+                            print(f"Linear rail - pos: {position}, vel: {velocity}")
+                except Exception as e:
+                    print(f"Failed to get linear rail state: {e}")
+                last_rail_log_time = current_time
+            
             count += 1
             
             # Set target velocity (supports both 3D and 4D)
@@ -811,4 +851,10 @@ if __name__ == "__main__":
             time.sleep(0.02)
     except KeyboardInterrupt:
         print("Exiting...")
+    finally:
+        # Ensure close is always called, even on Ctrl+C
+        try:
+            vehicle.close()
+        except Exception as e:
+            logger.error(f"Error during close: {e}")
         pygame.quit()
