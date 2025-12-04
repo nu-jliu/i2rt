@@ -99,8 +99,8 @@ class VehicleMotorController:
         else:
             self.motor_interface = channel_name_or_motor_interface
 
-        self.motor_offsets = self.motor_interface.motor_offsets
-        self.motor_directions = self.motor_interface.motor_directions
+        self.motor_offsets = self.motor_interface.motor_offset
+        self.motor_directions = self.motor_interface.motor_direction
         self.kd = np.array(
             [
                 2,
@@ -584,11 +584,11 @@ class LinearRailVehicle(Vehicle):
 
         # Initialize linear rail controller
         self.linear_rail = LinearRailController(
+            single_motor_control_interface=single_motor_interface,
             rail_speed=lift_max_vel,
             auto_home=auto_home,
             homing_timeout=homing_timeout,
         )
-        self.linear_rail._post_init(single_motor_interface)
 
     def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
         """Set target velocity for both base and linear rail.
@@ -670,16 +670,24 @@ if __name__ == "__main__":
 
     max_vel = np.array([0.8, 0.8, 3.0])
     max_accel = np.array([0.8, 0.8, 3.0])
+    lift_max_vel = 14.0  # Maximum velocity for linear rail (rad/s)
 
-    vehicle = Vehicle(max_vel=max_vel, max_accel=max_accel, channel=args.channel)
+    # Use LinearRailVehicle instead of Vehicle
+    vehicle = LinearRailVehicle(
+        vehicle_max_vel=max_vel,
+        vehicle_max_accel=max_accel,
+        lift_max_vel=lift_max_vel,
+        channel=args.channel,
+        auto_home=True,
+    )
 
-    remote_base_command = np.zeros(3)
+    remote_base_command = np.zeros(4)  # Support 4D: [x, y, theta, linear_rail]
 
     class TimeoutRemoteBaseCommand:
         def __init__(self, timeout: float = 0.2):
             self.timeout = timeout
             self.last_update_time = time.time() - 1000000
-            self.command = np.zeros(3)
+            self.command = np.zeros(4)  # Support 4D: [x, y, theta, linear_rail]
             self.frame = "local"
             self._lock = threading.Lock()
 
@@ -687,7 +695,11 @@ if __name__ == "__main__":
             target_velocity = input_dict["target_velocity"]
             frame = input_dict["frame"]
             with self._lock:
-                self.command = target_velocity
+                # Ensure target_velocity is 4D
+                if len(target_velocity) == 3:
+                    self.command = np.append(target_velocity, 0.0)  # Add linear_rail = 0
+                else:
+                    self.command = target_velocity
                 self.frame = frame
                 self.last_update_time = time.time()
 
@@ -730,18 +742,34 @@ if __name__ == "__main__":
 
     last_gampad_mode_togged = False
     count = 0
+    DEFAULT_RAIL_VELOCITY = 0.5  # Default linear rail velocity multiplier
     try:
         while True:
-            gamepad_cmd = gamepad.get_user_cmd()
+            gamepad_cmd = gamepad.get_user_cmd()  # 3D: [x, y, theta]
             gamepad_button = gamepad.get_button_reading()
+            lift_cmd = gamepad.get_lift_cmd()  # Hat: (x, y) tuple
 
             if gamepad_button["key_mode"] and not last_gampad_mode_togged:
                 last_gampad_mode_togged = True
                 gamepad_command_frame = "global" if gamepad_command_frame == "local" else "local"
             else:
                 last_gampad_mode_togged = False
+            
+            # Handle reset odometry (key_left_1)
             if gamepad_button["key_left_1"]:
                 vehicle.reset_odometry()
+
+            # Convert lift command (hat) to linear rail velocity (normalized [-1, 1])
+            # Hat: (0, 1) = up, (0, -1) = down, (0, 0) = stop
+            lift_vel = 0.0
+            if lift_cmd[1] > 0:  # Up
+                lift_vel = DEFAULT_RAIL_VELOCITY
+            elif lift_cmd[1] < 0:  # Down
+                lift_vel = -DEFAULT_RAIL_VELOCITY
+
+            # Combine base command (3D) with linear rail command (1D) to form 4D command
+            # All values are normalized [-1, 1] range
+            cmd_4d = np.append(gamepad_cmd, lift_vel)
 
             is_remote_command_valid = remote_base_command.is_command_valid()
 
@@ -758,18 +786,27 @@ if __name__ == "__main__":
                 print("Please check the E stop or the motor connection. ")
                 break
             if gamepad_command_override:
-                cmd = gamepad_cmd
+                cmd = cmd_4d
                 frame = gamepad_command_frame
             else:
                 cmd = user_cmd
                 frame = user_frame
             if count % 20 == 0:
                 # print up 1 float point
-                # print(f"frame: {frame}, cmd: {cmd[0]:.1f}, {cmd[1]:.1f}, {cmd[2]:.1f}")
-                sys.stdout.write(f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f}")
+                # print(f"frame: {frame}, cmd: {cmd[0]:.1f}, {cmd[1]:.1f}, {cmd[2]:.1f}, rail: {cmd[3]:.1f}")
+                sys.stdout.write(f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f} rail: {cmd[3]:.1f}")
                 sys.stdout.flush()
             count += 1
-            vehicle.set_target_velocity(cmd * max_vel, frame=frame)
+            
+            # Set target velocity (supports both 3D and 4D)
+            if len(cmd) == 4:
+                # 4D: [x, y, theta, linear_rail] - cmd is already normalized [-1, 1]
+                base_cmd = cmd[:3] * max_vel
+                rail_cmd = cmd[3] * lift_max_vel
+                vehicle.set_target_velocity(np.append(base_cmd, rail_cmd), frame=frame)
+            else:
+                # 3D: [x, y, theta] (backward compatibility)
+                vehicle.set_target_velocity(cmd * max_vel, frame=frame)
 
             time.sleep(0.02)
     except KeyboardInterrupt:

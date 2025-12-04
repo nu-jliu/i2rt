@@ -48,6 +48,21 @@ class Gamepad:
         user_cmd[np.abs(user_cmd) < 0.05] = 0
         return user_cmd
 
+    def get_lift_cmd(self) -> tuple[int, int]:
+        """Get lift command from hat (d-pad) input.
+        
+        Returns:
+            Tuple of (x, y) hat values. Typically:
+            - (0, 1): Up (move rail up/forward)
+            - (0, -1): Down (move rail down/backward)
+            - (0, 0): Neutral (stop rail)
+        """
+        pygame.event.pump()
+        if self.joy.get_numhats() > 0:
+            hat = self.joy.get_hat(0)  # Get hat 0 (d-pad)
+            return hat
+        return (0, 0)
+
     def close(self) -> None:
         pygame.quit()
 

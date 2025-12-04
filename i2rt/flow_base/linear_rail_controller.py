@@ -2,7 +2,6 @@ import logging
 import sys
 import threading
 import time
-from dataclasses import dataclass
 from typing import Any, Dict
 
 import numpy as np
@@ -76,15 +75,27 @@ class SingleMotorControlInterface:
         raise ValueError(f"Motor with ID {motor_id} not found in motor chain")
 
 
-@dataclass
 class LinearRailController:
-    rail_speed: float = 14.0
-    auto_home: bool = True  # Automatically start homing after initialization
-    homing_timeout: float = HOMING_TIMEOUT  # Timeout for homing procedure in seconds
-
-    def _post_init(self, single_motor_control_interface: SingleMotorControlInterface) -> None:
-        """Initialize linear rail controller"""
+    def __init__(
+        self,
+        single_motor_control_interface: SingleMotorControlInterface,
+        rail_speed: float = 14.0,
+        auto_home: bool = True,  # Automatically start homing after initialization
+        homing_timeout: float = HOMING_TIMEOUT,  # Timeout for homing procedure in seconds
+    ):
+        """Initialize linear rail controller
+        
+        Args:
+            single_motor_control_interface: Motor control interface (required)
+            rail_speed: Maximum rail speed in rad/s
+            auto_home: Whether to automatically home after initialization
+            homing_timeout: Timeout for homing procedure in seconds
+        """
         self.single_motor_control_interface = single_motor_control_interface
+        self.rail_speed = rail_speed
+        self.auto_home = auto_home
+        self.homing_timeout = homing_timeout
+        
         self.initialized = False
         self.brake_on = True
 
@@ -98,7 +109,14 @@ class LinearRailController:
 
         self._initialize_gpio()
 
-        self._initialize_linear_rail()
+        if self.auto_home:
+            self._initialize_linear_rail()
+        else:
+            # If auto_home is False, just release brake and mark as initialized
+            self.set_brake(engaged=False)
+            with self._lock:
+                self.initialized = True
+            logger.info("Linear rail initialized without auto-homing")
 
     def _ensure_gpio_mode(self) -> None:
         """Ensure GPIO mode is set"""
