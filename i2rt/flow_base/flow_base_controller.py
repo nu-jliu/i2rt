@@ -10,6 +10,7 @@ import logging
 import math
 import os
 import queue
+import sys
 import threading
 import time
 from enum import Enum
@@ -23,6 +24,14 @@ from ruckig import ControlInterface, InputParameter, OutputParameter, Result, Ru
 from threadpoolctl import threadpool_limits
 
 from i2rt.motor_drivers.dm_driver import ControlMode, DMChainCanInterface
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger("FlowBaseController")
 
 BASE_DEFAULT_PORT = 11323
 POLICY_CONTROL_FREQ = 10
@@ -95,7 +104,9 @@ class VehicleMotorController:
     ):
         self.num_casters = num_casters
         if isinstance(channel_name_or_motor_interface, str):
-            self.motor_interface = self._initialize_motor_chain(channel_name_or_motor_interface, steering_offset, steering_direction)
+            self.motor_interface = self._initialize_motor_chain(
+                channel_name_or_motor_interface, steering_offset, steering_direction
+            )
         else:
             self.motor_interface = channel_name_or_motor_interface
 
@@ -111,7 +122,9 @@ class VehicleMotorController:
 
         print(f"dm chain can interface: {self.motor_interface} initialized")
 
-    def _initialize_motor_chain(self, channel: str, steering_offset: List[float], steering_direction: List[int]) -> DMChainCanInterface:
+    def _initialize_motor_chain(
+        self, channel: str, steering_offset: List[float], steering_direction: List[int]
+    ) -> DMChainCanInterface:
         motor_list = []
         motor_offsets = []
 
@@ -376,7 +389,7 @@ class Vehicle(Robot):
             step_time = curr_time - last_step_time
             last_step_time = curr_time
             if step_time > 0.01:  # 10 ms
-                logging.warning(f"Step time {1000 * step_time:.3f} ms in {self.__class__.__name__} control_loop")
+                logger.warning(f"Step time {1000 * step_time:.3f} ms in {self.__class__.__name__} control_loop")
 
             # Update state
             self.update_state()
@@ -674,7 +687,8 @@ if __name__ == "__main__":
 
     joy = pygame.joystick.Joystick(0)
     CALIBRATION_RETRY_DELAY = 1
-    DEADZONE = 0.05
+    DEADZONE = 0.05  # Deadzone for base control (x, y, theta)
+    RAIL_DEADZONE = 0.15  # Larger deadzone for linear rail to prevent unwanted movement
     args = parser.parse_args()
 
     max_vel = np.array([0.8, 0.8, 3.0])
@@ -689,14 +703,14 @@ if __name__ == "__main__":
         channel=args.channel,
         auto_home=True,
     )
-    
+
     # Register cleanup function to ensure brake is engaged on exit
-    def close_vehicle():
+    def close_vehicle() -> None:
         try:
             vehicle.close()
         except Exception as e:
             logger.error(f"Error during atexit close: {e}")
-    
+
     atexit.register(close_vehicle)
 
     remote_base_command = np.zeros(4)  # Support 4D: [x, y, theta, linear_rail]
@@ -746,11 +760,11 @@ if __name__ == "__main__":
         pygame.event.pump()
         four_axis = [joy.get_axis(1), joy.get_axis(0), joy.get_axis(2), joy.get_axis(3)]
         if all(np.abs(axis) < DEADZONE for axis in four_axis):
-            logging.info("Joystick is at rest, please check joystick")
+            logger.info("Joystick is at rest, please check joystick")
             break
         else:
-            logging.warning(f"four_axis: {four_axis}")
-            logging.warning("Joystick's rest position is not at the center, please check joystick")
+            logger.warning(f"four_axis: {four_axis}")
+            logger.warning("Joystick's rest position is not at the center, please check joystick")
             time.sleep(CALIBRATION_RETRY_DELAY)
 
     # Main loop to read joystick inputs
@@ -774,23 +788,22 @@ if __name__ == "__main__":
                 gamepad_command_frame = "global" if gamepad_command_frame == "local" else "local"
             else:
                 last_gampad_mode_togged = False
-            
+
             # Handle reset odometry (key_left_1)
             if gamepad_button["key_left_1"]:
                 vehicle.reset_odometry()
 
-
             lift_vel = 0.0
             if joy.get_numaxes() > 3:
                 right_stick_y = joy.get_axis(3)  # Right stick Y-axis
-                # Apply deadzone and invert (up = negative axis value = positive velocity)
-                if np.abs(right_stick_y) > DEADZONE:
+                # Apply larger deadzone for linear rail to prevent unwanted movement
+                # Invert: up (negative axis value) = positive velocity
+                if np.abs(right_stick_y) > RAIL_DEADZONE:
                     lift_vel = -right_stick_y  # Invert: up (negative axis) = positive velocity
-            else:
-                if lift_cmd[1] > 0:  # Up
-                    lift_vel = DEFAULT_RAIL_VELOCITY
-                elif lift_cmd[1] < 0:  # Down
-                    lift_vel = -DEFAULT_RAIL_VELOCITY
+            elif lift_cmd[1] > 0:  # Up
+                lift_vel = DEFAULT_RAIL_VELOCITY
+            elif lift_cmd[1] < 0:  # Down
+                lift_vel = -DEFAULT_RAIL_VELOCITY
 
             cmd_4d = np.append(gamepad_cmd, lift_vel)
 
@@ -819,7 +832,7 @@ if __name__ == "__main__":
                 # print(f"frame: {frame}, cmd: {cmd[0]:.1f}, {cmd[1]:.1f}, {cmd[2]:.1f}, rail: {cmd[3]:.1f}")
                 sys.stdout.write(f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f} rail: {cmd[3]:.1f}")
                 sys.stdout.flush()
-            
+
             # Log linear rail position and velocity every 1 second
             current_time = time.time()
             if current_time - last_rail_log_time >= RAIL_LOG_INTERVAL:
@@ -835,10 +848,11 @@ if __name__ == "__main__":
                 except Exception as e:
                     print(f"Failed to get linear rail state: {e}")
                 last_rail_log_time = current_time
-            
+
             count += 1
-            
+
             # Set target velocity (supports both 3D and 4D)
+            # Note: Linear rail command timeout is checked in set_velocity() itself
             if len(cmd) == 4:
                 # 4D: [x, y, theta, linear_rail] - cmd is already normalized [-1, 1]
                 base_cmd = cmd[:3] * max_vel

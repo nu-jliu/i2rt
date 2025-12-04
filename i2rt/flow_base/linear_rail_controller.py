@@ -24,6 +24,7 @@ UPPER_LIMIT_GPIO = 5  # Upper limit GPIO
 LOWER_LIMIT_GPIO = 6  # Lower limit GPIO
 HOMING_SPEED_RATIO = 0.5
 HOMING_TIMEOUT = 30.0  # Timeout for homing procedure in seconds
+COMMAND_TIMEOUT = 0.25  # Timeout for command stream (2.5 * POLICY_CONTROL_PERIOD, where POLICY_CONTROL_PERIOD = 0.1s)
 
 
 class SingleMotorControlInterface:
@@ -84,7 +85,7 @@ class LinearRailController:
         homing_timeout: float = HOMING_TIMEOUT,  # Timeout for homing procedure in seconds
     ):
         """Initialize linear rail controller
-        
+
         Args:
             single_motor_control_interface: Motor control interface (required)
             rail_speed: Maximum rail speed in rad/s
@@ -95,7 +96,7 @@ class LinearRailController:
         self.rail_speed = rail_speed
         self.auto_home = auto_home
         self.homing_timeout = homing_timeout
-        
+
         self.initialized = False
         self.brake_on = True
 
@@ -106,6 +107,10 @@ class LinearRailController:
         self._homing_event = threading.Event()
         self._homing_start_time = None
         self.homing_speed_ratio = HOMING_SPEED_RATIO
+
+        # Command timeout tracking (similar to base control)
+        self.last_command_time = time.time() - 1000000  # Initialize to far past
+        self.command_timeout = COMMAND_TIMEOUT
 
         self._initialize_gpio()
 
@@ -302,6 +307,20 @@ class LinearRailController:
         assert not self.brake_on, "Brake must be released before setting velocity"
 
         with self._lock:
+            current_time = time.time()
+            if current_time - self.last_command_time > self.command_timeout:
+                try:
+                    self.single_motor_control_interface.set_velocity(0.0)
+                    logger.warning(
+                        f"Linear rail command timeout ({self.command_timeout:.2f}s) detected, "
+                        "but new command received (command stream recovered)"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to stop linear rail on timeout: {e}")
+
+            # Update last command time when receiving a command (command stream active)
+            self.last_command_time = current_time
+
             if vel > 0.0 and self.upper_limit_triggered:
                 logger.warning("Upper limit triggered, cannot move forward")
                 self.single_motor_control_interface.set_velocity(0.0)
