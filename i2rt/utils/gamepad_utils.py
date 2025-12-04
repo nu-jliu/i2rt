@@ -50,7 +50,7 @@ class Gamepad:
 
     def get_lift_cmd(self) -> tuple[int, int]:
         """Get lift command from hat (d-pad) input.
-        
+
         Returns:
             Tuple of (x, y) hat values. Typically:
             - (0, 1): Up (move rail up/forward)

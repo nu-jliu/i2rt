@@ -51,6 +51,12 @@ class FlowBaseClient:
             self.command["target_velocity"] = target_velocity
             self.command["frame"] = frame
 
+    def close(self) -> None:
+        """Stop the client and clean up resources."""
+        self.running = False
+        if hasattr(self, "_thread") and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
