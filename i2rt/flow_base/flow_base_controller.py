@@ -95,10 +95,10 @@ class VehicleMotorController:
     ):
         self.num_casters = num_casters
         if isinstance(channel_name_or_motor_interface, str):
-            self.motor_interface = self._initialize_motor_chain(channel_name_or_motor_interface)
+            self.motor_interface = self._initialize_motor_chain(channel_name_or_motor_interface, steering_offset, steering_direction)
         else:
             self.motor_interface = channel_name_or_motor_interface
-        
+
         self.motor_offsets = self.motor_interface.motor_offsets
         self.motor_directions = self.motor_interface.motor_directions
         self.kd = np.array(
@@ -110,7 +110,8 @@ class VehicleMotorController:
         )
 
         print(f"dm chain can interface: {self.motor_interface} initialized")
-    def _initialize_motor_chain(self) -> None:
+
+    def _initialize_motor_chain(self, channel: str, steering_offset: List[float], steering_direction: List[int]) -> DMChainCanInterface:
         motor_list = []
         motor_offsets = []
 
@@ -136,7 +137,7 @@ class VehicleMotorController:
             control_mode=ControlMode.VEL,
         )
         return motor_interface
-    
+
     def get_state(self) -> Dict[str, Any]:
         motor_states = self.motor_interface.read_states()
         steer_pos, drive_pos = [], []
@@ -171,22 +172,38 @@ class VehicleMotorController:
             vels.append(steer_vel[i])
             vels.append(drive_vel[i])
 
+        # Pad with zeros for any additional motors in the chain (e.g., linear rail motor)
+        num_motors_in_chain = len(self.motor_interface)
+        num_base_motors = 2 * self.num_casters
+        if num_motors_in_chain > num_base_motors:
+            # Preserve velocity of additional motors (e.g., linear rail) by reading current commands
+            with self.motor_interface.command_lock:
+                current_commands = self.motor_interface.commands
+                if current_commands and len(current_commands) == num_motors_in_chain:
+                    # Preserve velocities of additional motors
+                    for idx in range(num_base_motors, num_motors_in_chain):
+                        vels.append(current_commands[idx].vel)
+                else:
+                    # If no current commands, use zeros
+                    vels.extend([0.0] * (num_motors_in_chain - num_base_motors))
+
         self.motor_interface.set_commands(
-            torques=np.zeros(2 * self.num_casters),
-            pos=np.zeros(2 * self.num_casters),
+            torques=np.zeros(num_motors_in_chain),
+            pos=np.zeros(num_motors_in_chain),
             vel=vels,
-            kp=np.zeros(2 * self.num_casters),
-            kd=self.kd,
+            kp=np.zeros(num_motors_in_chain),
+            kd=np.pad(self.kd, (0, num_motors_in_chain - num_base_motors), constant_values=0.0),
             get_state=False,
         )
 
     def set_neutral(self) -> None:
+        num_motors_in_chain = len(self.motor_interface)
         self.motor_interface.set_commands(
-            torques=np.zeros(2 * self.num_casters),
-            pos=np.zeros(2 * self.num_casters),
-            vel=np.zeros(2 * self.num_casters),
-            kp=np.zeros(2 * self.num_casters),
-            kd=0.5 * np.ones(2 * self.num_casters),
+            torques=np.zeros(num_motors_in_chain),
+            pos=np.zeros(num_motors_in_chain),
+            vel=np.zeros(num_motors_in_chain),
+            kp=np.zeros(num_motors_in_chain),
+            kd=0.5 * np.ones(num_motors_in_chain),
         )
 
 
@@ -206,7 +223,7 @@ class Vehicle(Robot):
         self,
         max_vel: Tuple[float, float, float] = (0.5, 0.5, 1.57),
         max_accel: Tuple[float, float, float] = (0.25, 0.25, 0.79),
-        channel: str = "can_flow_base",
+        channel: str | DMChainCanInterface = "can_flow_base",
         auto_start: bool = True,
     ):
         self.max_vel = np.array(max_vel)
@@ -484,6 +501,7 @@ class Vehicle(Robot):
     def running(self) -> bool:
         return self.caster_module_controller.motor_interface.running
 
+
 class LinearRailVehicle(Vehicle):
     def __init__(
         self,
@@ -492,18 +510,138 @@ class LinearRailVehicle(Vehicle):
         lift_max_vel: float = 14.0,
         channel: str = "can_flow_base",
         auto_start: bool = True,
+        lift_motor_id: int = 9,
+        lift_motor_type: str = "DM8009",
+        auto_home: bool = True,
+        homing_timeout: float = 30.0,
     ):
-        # TODO: initialize DM motor chain here 
-        motor_chain = 
-        self.lift = 
-    
-        super().__init__(vehicle_max_vel, vehicle_max_accel, motor_chain, auto_start)
-    
+        """
+        Initialize LinearRailVehicle with a linear rail lift module.
+
+        Args:
+            vehicle_max_vel: Maximum velocity for vehicle base (x, y, theta)
+            vehicle_max_accel: Maximum acceleration for vehicle base (x, y, theta)
+            lift_max_vel: Maximum velocity for linear rail lift (rad/s)
+            channel: CAN channel name for motor communication
+            auto_start: Whether to automatically start the control loop
+            lift_motor_id: Motor ID for the linear rail motor
+            lift_motor_type: Motor type (e.g., "DM4310", "DM8009")
+            auto_home: Whether to automatically home the linear rail on initialization
+            homing_timeout: Timeout for homing procedure (seconds)
+        """
+        # Create a unified motor chain with 9 motors: 8 base motors + 1 linear rail motor
+        # First, create the base motor list (8 motors: 4 casters * 2 motors each)
+        motor_list = []
+        motor_offsets = []
+        motor_directions = []
+
+        steering_offset = [0.0, 0.0, 0.0, 0.0]
+        steering_direction = [1, 1, 1, 1]
+
+        for caster_idx in [1, 2, 3, 0]:
+            motor_offsets.append(steering_offset[caster_idx])
+            motor_offsets.append(0)  # drive motor no need to set offset
+            motor_directions.append(steering_direction[caster_idx])
+            motor_directions.append((-1) ** (caster_idx))  # drive motor direction
+
+            caster_idx = caster_idx + 1
+            steering_motor_id = caster_idx * 2 - 1
+            drive_motor_id = caster_idx * 2
+            motor_list.append([steering_motor_id, "DM4310V"])
+            motor_list.append([drive_motor_id, "DM_FLOW_WHEEL"])
+
+        # Add linear rail motor (9th motor)
+        motor_list.append([lift_motor_id, lift_motor_type])
+        motor_offsets.append(0.0)
+        motor_directions.append(1)
+
+        # Create unified motor chain with all 9 motors
+        unified_motor_chain = DMChainCanInterface(
+            motor_list=motor_list,
+            motor_offset=np.array(motor_offsets),
+            motor_direction=np.array(motor_directions),
+            channel=channel,
+            motor_chain_name="linear_rail_vehicle",
+            control_mode=ControlMode.VEL,
+        )
+
+        # Initialize vehicle base with the unified motor chain using super().__init__()
+        super().__init__(
+            max_vel=vehicle_max_vel,
+            max_accel=vehicle_max_accel,
+            channel=unified_motor_chain,  # Pass the unified motor chain
+            auto_start=auto_start,
+        )
+
+        # Initialize linear rail using the same unified motor chain
+        from i2rt.flow_base.linear_rail_controller import (
+            LinearRailController,
+            SingleMotorControlInterface,
+        )
+
+        # Create single motor control interface for the linear rail (9th motor, index 8)
+        single_motor_interface = SingleMotorControlInterface.from_multi_motor_chain(unified_motor_chain, lift_motor_id)
+
+        # Initialize linear rail controller
+        self.linear_rail = LinearRailController(
+            rail_speed=lift_max_vel,
+            auto_home=auto_home,
+            homing_timeout=homing_timeout,
+        )
+        self.linear_rail._post_init(single_motor_interface)
+
     def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
-        raise NotImplementedError("LinearRailVehicle does not support set_target_velocity")
-    
-    def get_lift_state(self) -> Dict[str, Any]:
-        return self.lift.get_state()
+        """Set target velocity for both base and linear rail.
+
+        Args:
+            velocity: Target velocity. Can be:
+                - 3D array [x, y, theta] for base only
+                - 4D array [x, y, theta, linear_rail_vel] for base + linear rail
+            frame: Frame for base velocity ("local" or "global")
+        """
+        velocity = np.asarray(velocity)
+
+        if velocity.shape == (3,):
+            # Base only
+            super().set_target_velocity(velocity, frame)
+        elif velocity.shape == (4,):
+            # Base + linear rail
+            base_velocity = velocity[:3]
+            linear_rail_velocity = velocity[3]
+            super().set_target_velocity(base_velocity, frame)
+            self.set_linear_rail_velocity(linear_rail_velocity)
+        else:
+            raise ValueError(
+                f"Velocity must be 3D [x, y, theta] or 4D [x, y, theta, linear_rail_vel], "
+                f"got shape {velocity.shape}"
+            )
+
+    def get_linear_rail_state(self) -> Dict[str, Any]:
+        """Get the current state of the linear rail."""
+        return self.linear_rail.get_state()
+
+    def set_linear_rail_velocity(self, velocity: float) -> None:
+        """Set the velocity of the linear rail.
+
+        Args:
+            velocity: Target velocity in rad/s (positive = forward, negative = backward)
+        """
+        self.linear_rail.set_velocity(velocity)
+
+    def set_linear_rail_brake(self, engaged: bool) -> None:
+        """Set the brake state of the linear rail.
+
+        Args:
+            engaged: True to engage brake, False to release brake
+        """
+        self.linear_rail.set_brake(engaged)
+
+    def cleanup(self) -> None:
+        """Clean up resources: stop linear rail and engage brake."""
+        if hasattr(self, "linear_rail"):
+            self.linear_rail.cleanup()
+        super().cleanup()
+
 
 if __name__ == "__main__":
     import argparse
