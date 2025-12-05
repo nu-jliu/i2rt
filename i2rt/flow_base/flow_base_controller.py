@@ -774,14 +774,12 @@ if __name__ == "__main__":
 
     last_gampad_mode_togged = False
     count = 0
-    DEFAULT_RAIL_VELOCITY = 0.5  # Default linear rail velocity multiplier
     last_rail_log_time = time.time()
     RAIL_LOG_INTERVAL = 1.0  # Log linear rail position every 1 second
     try:
         while True:
             gamepad_cmd = gamepad.get_user_cmd()  # 3D: [x, y, theta]
             gamepad_button = gamepad.get_button_reading()
-            lift_cmd = gamepad.get_lift_cmd()  # Hat: (x, y) tuple
 
             if gamepad_button["key_mode"] and not last_gampad_mode_togged:
                 last_gampad_mode_togged = True
@@ -800,10 +798,6 @@ if __name__ == "__main__":
                 # Invert: up (negative axis value) = positive velocity
                 if np.abs(right_stick_y) > RAIL_DEADZONE:
                     lift_vel = -right_stick_y  # Invert: up (negative axis) = positive velocity
-            elif lift_cmd[1] > 0:  # Up
-                lift_vel = DEFAULT_RAIL_VELOCITY
-            elif lift_cmd[1] < 0:  # Down
-                lift_vel = -DEFAULT_RAIL_VELOCITY
 
             cmd_4d = np.append(gamepad_cmd, lift_vel)
 
