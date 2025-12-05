@@ -638,13 +638,16 @@ class LinearRailVehicle(Vehicle):
         """Get the current state of the linear rail."""
         return self.linear_rail.get_state()
 
-    def set_linear_rail_velocity(self, velocity: float) -> None:
-        """Set the velocity of the linear rail."""
-        self.linear_rail.set_velocity(velocity)
+    def set_linear_rail_velocity(self, input_dict: Dict[str, Any] | None = None) -> None:
+        """Set the velocity of the linear rail.
 
-    def set_linear_rail_brake(self, engaged: bool) -> None:
-        """Set the brake state of the linear rail."""
-        self.linear_rail.set_brake(engaged)
+        Args:
+            input_dict: Dictionary containing 'velocity' key (float, rad/s)
+        """
+        if input_dict is None:
+            input_dict = {}
+        velocity = input_dict.get("velocity", 0.0)
+        self.linear_rail.set_velocity(velocity)
 
     def close(self) -> None:
         """Clean up resources: stop linear rail and engage brake."""
@@ -736,6 +739,13 @@ if __name__ == "__main__":
     server.bind("get_odometry", vehicle.get_odometry)
     server.bind("reset_odometry", vehicle.reset_odometry)
     server.bind("set_target_velocity", remote_base_command.remote_set_target_velocity)
+
+    # Bind linear rail APIs if vehicle has linear rail
+    if hasattr(vehicle, "linear_rail"):
+        server.bind("get_linear_rail_state", vehicle.get_linear_rail_state)
+        server.bind("set_linear_rail_velocity", vehicle.set_linear_rail_velocity)
+        logger.info("Linear rail APIs bound to server")
+
     server.start(block=False)
 
     print(f"Joystick Name: {joy.get_name()}")
