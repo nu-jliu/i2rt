@@ -180,32 +180,28 @@ class VehicleMotorController:
 
     def set_velocities(self, input_dict: Dict[str, Any]) -> None:
         steer_vel, drive_vel = input_dict["steer_vel"], input_dict["drive_vel"]
-        vels = []
-        for i in range(self.num_casters):
-            vels.append(steer_vel[i])
-            vels.append(drive_vel[i])
-
-        # Pad with zeros for any additional motors in the chain (e.g., linear rail motor)
         num_motors_in_chain = len(self.motor_interface)
         num_base_motors = 2 * self.num_casters
+
+        # Build base motor velocities (steer and drive alternating)
+        vels = np.zeros(num_motors_in_chain)
+        for i in range(self.num_casters):
+            vels[i * 2] = steer_vel[i]  # Steer motor
+            vels[i * 2 + 1] = drive_vel[i]  # Drive motor
+
+        # Preserve velocities of additional motors (e.g., linear rail)
         if num_motors_in_chain > num_base_motors:
-            # Preserve velocity of additional motors (e.g., linear rail) by reading current commands
             with self.motor_interface.command_lock:
                 current_commands = self.motor_interface.commands
                 if current_commands and len(current_commands) == num_motors_in_chain:
-                    # Preserve velocities of additional motors
-                    for idx in range(num_base_motors, num_motors_in_chain):
-                        vels.append(current_commands[idx].vel)
-                else:
-                    # If no current commands, use zeros
-                    vels.extend([0.0] * (num_motors_in_chain - num_base_motors))
+                    vels[num_base_motors:] = [cmd.vel for cmd in current_commands[num_base_motors:]]
 
         self.motor_interface.set_commands(
             torques=np.zeros(num_motors_in_chain),
             pos=np.zeros(num_motors_in_chain),
             vel=vels,
             kp=np.zeros(num_motors_in_chain),
-            kd=np.pad(self.kd, (0, num_motors_in_chain - num_base_motors), constant_values=0.0),
+            kd=2.0 * np.ones(num_motors_in_chain),
             get_state=False,
         )
 
@@ -530,7 +526,7 @@ class LinearRailVehicle(Vehicle):
         vehicle_max_vel: Tuple[float, float, float] = (0.5, 0.5, 1.57),
         vehicle_max_accel: Tuple[float, float, float] = (0.25, 0.25, 0.79),
         lift_max_vel: float = 14.0,
-        channel: str = "can_flow_base",
+        channel: str = "can_linear_rail",
         auto_start: bool = True,
         lift_motor_id: int = 9,
         lift_motor_type: str = "DM8009",
@@ -643,19 +639,11 @@ class LinearRailVehicle(Vehicle):
         return self.linear_rail.get_state()
 
     def set_linear_rail_velocity(self, velocity: float) -> None:
-        """Set the velocity of the linear rail.
-
-        Args:
-            velocity: Target velocity in rad/s (positive = forward, negative = backward)
-        """
+        """Set the velocity of the linear rail."""
         self.linear_rail.set_velocity(velocity)
 
     def set_linear_rail_brake(self, engaged: bool) -> None:
-        """Set the brake state of the linear rail.
-
-        Args:
-            engaged: True to engage brake, False to release brake
-        """
+        """Set the brake state of the linear rail."""
         self.linear_rail.set_brake(engaged)
 
     def close(self) -> None:
