@@ -5,7 +5,7 @@ import mink
 import mujoco
 import numpy as np
 
-from i2rt.robots.motor_chain_robot import YAM_XML_PATH
+from i2rt.robots.utils import YAM_XML_PATH
 
 
 class Kinematics:
