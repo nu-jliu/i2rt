@@ -37,14 +37,10 @@ class FlowBaseClient:
         """Set target velocity for base and optionally linear rail.
 
         Args:
-            target_velocity (np.ndarray): speed settings for the base and lift motor [x, y, theta, lift_velocity(optional)]
-            frame (str, optional): base frame of the target velocity
+            target_velocity: [x, y, theta] or [x, y, theta, linear_rail_vel]
+            frame: "local" or "global"
         """
-        assert target_velocity.shape == (self.num_dofs,), (
-            "Target velocity must have shape (3,)"
-            if not self.with_linear_rail
-            else "Target velocity must have shape (4,)"
-        )
+        assert target_velocity.shape == (self.num_dofs,), f"Target velocity must have shape ({self.num_dofs},)"
         assert frame in ["local", "global"], "Frame must be either local or global"
 
         with self._lock:
@@ -52,11 +48,7 @@ class FlowBaseClient:
             self.command["frame"] = frame
 
     def get_linear_rail_state(self) -> Any:
-        """Get the current state of the linear rail.
-
-        Returns:
-            Dict containing position, velocity, brake status, limit switch states, etc.
-        """
+        """Get the current state of the linear rail."""
         if not self.with_linear_rail:
             raise ValueError("Linear rail not enabled. Initialize FlowBaseClient with with_linear_rail=True")
         return self.client.get_linear_rail_state({}).result()
@@ -69,7 +61,10 @@ class FlowBaseClient:
         """
         if not self.with_linear_rail:
             raise ValueError("Linear rail not enabled. Initialize FlowBaseClient with with_linear_rail=True")
-        return self.client.set_linear_rail_velocity({"velocity": velocity}).result()
+        with self._lock:
+            if len(self.command["target_velocity"]) < 4:
+                self.command["target_velocity"] = np.append(self.command["target_velocity"], 0.0)
+            self.command["target_velocity"][3] = velocity
 
     def close(self) -> None:
         """Stop the client and clean up resources."""
@@ -107,24 +102,33 @@ if __name__ == "__main__":
             sys.stdout.flush()
             time.sleep(0.02)
     elif args.command == "test_linear_rail":
-        client.set_linear_rail_velocity(5.0)  # Move up
-        while True:
-            rail_state = client.get_linear_rail_state()
-            sys.stdout.write(
-                f"\r position: {rail_state['position']:.4f} velocity: {rail_state['velocity']:.4f} "
-                f"upper_limit: {rail_state['upper_limit_triggered']} lower_limit: {rail_state['lower_limit_triggered']}"
-            )
-            sys.stdout.flush()
-            time.sleep(0.02)
+        try:
+            client.set_linear_rail_velocity(0.5)
+            while True:
+                rail_state = client.get_linear_rail_state()
+                sys.stdout.write(
+                    f"\r position: {rail_state['position']:.4f} velocity: {rail_state['velocity']:.4f} "
+                    f"upper_limit: {rail_state['upper_limit_triggered']} lower_limit: {rail_state['lower_limit_triggered']}"
+                )
+                sys.stdout.flush()
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\nStopping...")
+            client.set_linear_rail_velocity(0.0)
+            time.sleep(0.5)
     elif args.command == "get_linear_rail_state":
-        while True:
-            rail_state = client.get_linear_rail_state()
-            sys.stdout.write(
-                f"\r position: {rail_state['position']:.4f} velocity: {rail_state['velocity']:.4f} "
-                f"upper_limit: {rail_state['upper_limit_triggered']} lower_limit: {rail_state['lower_limit_triggered']}"
-            )
-            sys.stdout.flush()
-            time.sleep(0.02)
+        print("Monitoring linear rail state (Press Ctrl+C to exit)")
+        try:
+            while True:
+                rail_state = client.get_linear_rail_state()
+                sys.stdout.write(
+                    f"\r position: {rail_state['position']:.4f} velocity: {rail_state['velocity']:.4f} "
+                    f"upper_limit: {rail_state['upper_limit_triggered']} lower_limit: {rail_state['lower_limit_triggered']}"
+                )
+                sys.stdout.flush()
+                time.sleep(0.1)
+        except KeyboardInterrupt:
+            print("\nExiting")
     else:
         client.close()
         sys.exit(1)

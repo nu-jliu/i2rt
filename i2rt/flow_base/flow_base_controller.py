@@ -634,20 +634,29 @@ class LinearRailVehicle(Vehicle):
                 f"got shape {velocity.shape}"
             )
 
-    def get_linear_rail_state(self) -> Dict[str, Any]:
-        """Get the current state of the linear rail."""
-        return self.linear_rail.get_state()
+    def get_linear_rail_state(self, input_dict: Dict[str, Any] | None = None) -> Dict[str, Any]:
+        """Get the current state of the linear rail.
 
-    def set_linear_rail_velocity(self, input_dict: Dict[str, Any] | None = None) -> None:
+        Args:
+            input_dict: Optional dictionary (unused, for API compatibility)
+        """
+        state = self.linear_rail.get_state()
+        if "motor_state" in state:
+            state = {k: v for k, v in state.items() if k != "motor_state"}
+        return state
+
+    def set_linear_rail_velocity(self, velocity: float) -> None:
         """Set the velocity of the linear rail.
 
         Args:
-            input_dict: Dictionary containing 'velocity' key (float, rad/s)
+            velocity: Target velocity in rad/s
         """
-        if input_dict is None:
-            input_dict = {}
-        velocity = input_dict.get("velocity", 0.0)
-        self.linear_rail.set_velocity(velocity)
+        try:
+            self.linear_rail.set_velocity(velocity)
+        except AssertionError as e:
+            logger.warning(f"Linear rail velocity command rejected: {e}")
+        except Exception as e:
+            logger.error(f"Failed to set linear rail velocity: {e}", exc_info=True)
 
     def close(self) -> None:
         """Clean up resources: stop linear rail and engage brake."""
@@ -704,9 +713,9 @@ if __name__ == "__main__":
 
     atexit.register(close_vehicle)
 
-    remote_base_command = np.zeros(4)  # Support 4D: [x, y, theta, linear_rail]
+    class TimeoutRemoteCommand:
+        """Unified remote command handler for LinearRailVehicle (base + linear rail)"""
 
-    class TimeoutRemoteBaseCommand:
         def __init__(self, timeout: float = 0.2):
             self.timeout = timeout
             self.last_update_time = time.time() - 1000000
@@ -714,36 +723,43 @@ if __name__ == "__main__":
             self.frame = "local"
             self._lock = threading.Lock()
 
+        def is_command_valid(self) -> bool:
+            return time.time() - self.last_update_time < self.timeout
+
         def remote_set_target_velocity(self, input_dict: Dict[str, Any]) -> None:
+            """Set target velocity for base (and optionally linear rail)"""
             target_velocity = input_dict["target_velocity"]
             frame = input_dict["frame"]
             with self._lock:
-                # Ensure target_velocity is 4D
+                # If 3D command, only update base part, preserve linear_rail value
                 if len(target_velocity) == 3:
-                    self.command = np.append(target_velocity, 0.0)  # Add linear_rail = 0
+                    # Ensure command is 4D
+                    if len(self.command) < 4:
+                        self.command = np.append(self.command, 0.0) if len(self.command) == 3 else np.zeros(4)
+                    # Update only base part [x, y, theta], preserve linear_rail
+                    self.command[:3] = target_velocity
                 else:
+                    # 4D command: update everything
                     self.command = target_velocity
                 self.frame = frame
                 self.last_update_time = time.time()
 
-        def is_command_valid(self) -> bool:
-            return time.time() - self.last_update_time < self.timeout
-
         def get_command(self) -> Tuple[np.ndarray, str]:
+            """Get base command [x, y, theta, linear_rail] and frame"""
             with self._lock:
                 return self.command, self.frame
 
-    remote_base_command = TimeoutRemoteBaseCommand()
+    remote_command = TimeoutRemoteCommand()
+
     # setup server for remote calls
     server = portal.Server(BASE_DEFAULT_PORT)
     server.bind("get_odometry", vehicle.get_odometry)
     server.bind("reset_odometry", vehicle.reset_odometry)
-    server.bind("set_target_velocity", remote_base_command.remote_set_target_velocity)
+    server.bind("set_target_velocity", remote_command.remote_set_target_velocity)
 
     # Bind linear rail APIs if vehicle has linear rail
     if hasattr(vehicle, "linear_rail"):
         server.bind("get_linear_rail_state", vehicle.get_linear_rail_state)
-        server.bind("set_linear_rail_velocity", vehicle.set_linear_rail_velocity)
         logger.info("Linear rail APIs bound to server")
 
     server.start(block=False)
@@ -799,10 +815,10 @@ if __name__ == "__main__":
 
             cmd_4d = np.append(gamepad_cmd, lift_vel)
 
-            is_remote_command_valid = remote_base_command.is_command_valid()
+            is_remote_command_valid = remote_command.is_command_valid()
 
             if is_remote_command_valid:
-                user_cmd, user_frame = remote_base_command.get_command()
+                user_cmd, user_frame = remote_command.get_command()
                 gamepad_command_override = False
 
                 if gamepad_button["key_left_2"]:
@@ -844,7 +860,6 @@ if __name__ == "__main__":
             count += 1
 
             # Set target velocity (supports both 3D and 4D)
-            # Note: Linear rail command timeout is checked in set_velocity() itself
             if len(cmd) == 4:
                 # 4D: [x, y, theta, linear_rail] - cmd is already normalized [-1, 1]
                 base_cmd = cmd[:3] * max_vel
