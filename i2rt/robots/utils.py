@@ -17,6 +17,7 @@ YAM_XML_LINEAR_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_4310_li
 YAM_TEACHING_HANDLE_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_teaching_handle.xml")
 YAM_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_no_gripper.xml")
 
+
 class GripperType(enum.Enum):
     CRANK_4310 = "crank_4310"  # a 4310 motor with a crank
     LINEAR_3507 = "linear_3507"  # a 3507 motor with a linear actuator
@@ -42,6 +43,7 @@ class GripperType(enum.Enum):
             raise ValueError(
                 f"Unknown gripper type: {name}, gripper has to be one of the following: {GripperType.available_grippers()}"
             )
+
     @classmethod
     def available_grippers(cls) -> List[str]:
         return [gripper.value for gripper in GripperType]
@@ -317,7 +319,7 @@ class GripperForceLimiter:
                 print(f"target_gripper_raw_pos: {target_gripper_raw_pos}")
             # Update gripper target position
             a = 0.1
-            if self._gripper_adjusted_qpos is None: #initialize it to the target position
+            if self._gripper_adjusted_qpos is None:  # initialize it to the target position
                 self._gripper_adjusted_qpos = target_gripper_raw_pos
             self._gripper_adjusted_qpos = (1 - a) * self._gripper_adjusted_qpos + a * target_gripper_raw_pos
             return self._gripper_adjusted_qpos
