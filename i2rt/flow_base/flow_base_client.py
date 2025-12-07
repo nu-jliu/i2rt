@@ -126,7 +126,7 @@ if __name__ == "__main__":
                     f"upper_limit: {rail_state['upper_limit_triggered']} lower_limit: {rail_state['lower_limit_triggered']}"
                 )
                 sys.stdout.flush()
-                time.sleep(0.1)
+                time.sleep(1.0)
         except KeyboardInterrupt:
             print("\nExiting")
     else:
