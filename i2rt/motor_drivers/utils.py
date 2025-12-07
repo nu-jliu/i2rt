@@ -1,7 +1,7 @@
-from dataclasses import dataclass
-import numpy as np
 import enum
+from dataclasses import dataclass
 from typing import List
+
 
 def uint_to_float(x_int: int, x_min: float, x_max: float, bits: int) -> float:
     """Converts unsigned int to float, given range and number of bits."""
@@ -18,6 +18,7 @@ def float_to_uint(x: float, x_min: float, x_max: float, bits: int) -> int:
     x = max(x, x_min)
     return int((x - offset) * ((1 << bits) - 1) / span)
 
+
 @dataclass
 class MotorConstants:
     POSITION_MAX: float = 12.5
@@ -32,13 +33,14 @@ class MotorConstants:
     ####### Mihgt be used for other motors #######
     CURRENT_MAX: float = 1.0
     CURRENT_MIN: float = -1.0
-    KT:float = 1.0
+    KT: float = 1.0
     ##############################
 
     KP_MAX: float = 500.0
     KP_MIN: float = 0.0
     KD_MAX: float = 5.0
     KD_MIN: float = 0.0
+
 
 @dataclass
 class MotorInfo:
@@ -114,6 +116,7 @@ class MotorErrorCode:
     @classmethod
     def get_error_message(cls, error_code: int) -> str:
         return cls.motor_error_code_dict.get(int(error_code), f"Unknown error code: {error_code}")
+
 
 class MotorType:
     DM8009 = "DM8009"
@@ -192,6 +195,7 @@ class MotorType:
 class AutoNameEnum(enum.Enum):
     def _generate_next_value_(name: str, start: int, count: int, last_values: List[str]) -> str:
         return name
+
 
 class ReceiveMode(AutoNameEnum):
     p16 = enum.auto()

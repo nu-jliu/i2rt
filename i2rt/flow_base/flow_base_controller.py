@@ -17,10 +17,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import portal
 from dm_env.specs import Array
 from ruckig import ControlInterface, InputParameter, OutputParameter, Result, Ruckig
 from threadpoolctl import threadpool_limits
-import portal
+
 from i2rt.motor_drivers.dm_driver import ControlMode, DMChainCanInterface
 
 BASE_DEFAULT_PORT = 11323
@@ -315,6 +316,7 @@ class Vehicle(Robot):
             self.dx = R @ dx_local
             self.x += self.dx * CONTROL_PERIOD
         time.sleep(0.0005)
+
     def start_control(self) -> None:
         if self.control_loop_thread is None:
             print("To initiate a new control loop, please create a new instance of Vehicle.")
@@ -436,14 +438,14 @@ class Vehicle(Robot):
                 command["frame"] = FrameType(frame)
             self.command_queue.put(command, block=False)
 
-    def get_odometry(self, input_dict = {}) -> Dict[str, Any]:
+    def get_odometry(self, input_dict: Dict[str, Any] | None = None) -> Dict[str, Any]:
         with self._lock:
             return {
                 "translation": self.x[:2],
                 "rotation": self.x[2],
             }
 
-    def reset_odometry(self,input_dict = {}) -> None:
+    def reset_odometry(self, input_dict: Dict[str, Any] | None = None) -> None:
         with self._lock:
             self.x = np.zeros(self.num_dofs)
             self.dx = np.zeros(self.num_dofs)
@@ -477,12 +479,15 @@ class Vehicle(Robot):
 
 
 if __name__ == "__main__":
-    import os
-    import time
     import argparse
-    from i2rt.utils.gamepad_utils import Gamepad
-    import pygame
+    import os
     import sys
+    import time
+
+    import pygame
+
+    from i2rt.utils.gamepad_utils import Gamepad
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", type=str, default="can0")
 
@@ -503,18 +508,17 @@ if __name__ == "__main__":
 
     vehicle = Vehicle(max_vel=max_vel, max_accel=max_accel, channel=args.channel)
 
-
     remote_base_command = np.zeros(3)
 
     class TimeoutRemoteBaseCommand:
         def __init__(self, timeout: float = 0.2):
             self.timeout = timeout
-            self.last_update_time = time.time()-1000000
+            self.last_update_time = time.time() - 1000000
             self.command = np.zeros(3)
             self.frame = "local"
             self._lock = threading.Lock()
 
-        def remote_set_target_velocity(self,input_dict) -> None:
+        def remote_set_target_velocity(self, input_dict: Dict[str, Any]) -> None:
             target_velocity = input_dict["target_velocity"]
             frame = input_dict["frame"]
             with self._lock:
@@ -522,12 +526,13 @@ if __name__ == "__main__":
                 self.frame = frame
                 self.last_update_time = time.time()
 
-        def is_command_valid(self):
+        def is_command_valid(self) -> bool:
             return time.time() - self.last_update_time < self.timeout
 
-        def get_command(self):
+        def get_command(self) -> Tuple[np.ndarray, str]:
             with self._lock:
                 return self.command, self.frame
+
     remote_base_command = TimeoutRemoteBaseCommand()
     # setup server for remote calls
     server = portal.Server(BASE_DEFAULT_PORT)
@@ -535,7 +540,6 @@ if __name__ == "__main__":
     server.bind("reset_odometry", vehicle.reset_odometry)
     server.bind("set_target_velocity", remote_base_command.remote_set_target_velocity)
     server.start(block=False)
-
 
     print(f"Joystick Name: {joy.get_name()}")
     print(f"Number of Axes: {joy.get_numaxes()}")
@@ -556,7 +560,7 @@ if __name__ == "__main__":
 
     # Main loop to read joystick inputs
     gamepad = Gamepad()
-    gamepad_command_frame = 'local'
+    gamepad_command_frame = "local"
     gamepad_command_override = True
 
     last_gampad_mode_togged = False
@@ -566,12 +570,12 @@ if __name__ == "__main__":
             gamepad_cmd = gamepad.get_user_cmd()
             gamepad_button = gamepad.get_button_reading()
 
-            if gamepad_button['key_mode'] and not last_gampad_mode_togged:
+            if gamepad_button["key_mode"] and not last_gampad_mode_togged:
                 last_gampad_mode_togged = True
-                gamepad_command_frame = 'global' if gamepad_command_frame == 'local' else 'local'
+                gamepad_command_frame = "global" if gamepad_command_frame == "local" else "local"
             else:
                 last_gampad_mode_togged = False
-            if gamepad_button['key_left_1']:
+            if gamepad_button["key_left_1"]:
                 vehicle.reset_odometry()
 
             is_remote_command_valid = remote_base_command.is_command_valid()
@@ -580,13 +584,13 @@ if __name__ == "__main__":
                 user_cmd, user_frame = remote_base_command.get_command()
                 gamepad_command_override = False
 
-                if gamepad_button['key_left_2']:
+                if gamepad_button["key_left_2"]:
                     gamepad_command_override = True
             else:
                 gamepad_command_override = True
             if not vehicle.running():
                 print("Motor interface is not running, exiting...")
-                print(f"Please check the E stop or the motor connection. ")
+                print("Please check the E stop or the motor connection. ")
                 break
             if gamepad_command_override:
                 cmd = gamepad_cmd
@@ -597,12 +601,10 @@ if __name__ == "__main__":
             if count % 20 == 0:
                 # print up 1 float point
                 # print(f"frame: {frame}, cmd: {cmd[0]:.1f}, {cmd[1]:.1f}, {cmd[2]:.1f}")
-                sys.stdout.write(
-                    f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f}"
-                )
+                sys.stdout.write(f"\rframe: {frame} cmd: {cmd[0]:.1f} {cmd[1]:.1f} {cmd[2]:.1f}")
                 sys.stdout.flush()
             count += 1
-            vehicle.set_target_velocity(cmd*max_vel, frame=frame)
+            vehicle.set_target_velocity(cmd * max_vel, frame=frame)
 
             time.sleep(0.02)
     except KeyboardInterrupt:
