@@ -241,24 +241,34 @@ class LinearRailController:
 
             # Move backward at homing speed (half of normal speed, like linear_motor.py)
             motor_velocity = -self.rail_speed * HOMING_SPEED_RATIO  # Negative = move backward
-            self.single_motor_control_interface.set_velocity(motor_velocity)
             logger.info(f"Homing started with velocity {motor_velocity:.3f} rad/s (moving backward)")
 
             # Wait for homing to complete or timeout
+            # Continuously re-apply homing velocity to prevent it from being overwritten by base controller
             start_time = time.time()
+            last_velocity_set_time = start_time
+            velocity_set_interval = 0.05  # Re-set velocity every 50ms to prevent overwrite
+            
             while time.time() - start_time < self.homing_timeout:
+                current_time = time.time()
+                
+                # Continuously re-apply homing velocity to prevent base controller from overwriting it
+                if current_time - last_velocity_set_time >= velocity_set_interval:
+                    self.single_motor_control_interface.set_velocity(motor_velocity)
+                    last_velocity_set_time = current_time
+                
                 with self._lock:
                     if self.lower_limit_triggered:
                         # Reached lower limit, stop motor
                         self.single_motor_control_interface.set_velocity(0.0)
-                        elapsed_time = time.time() - start_time
+                        elapsed_time = current_time - start_time
                         logger.info(f"Homing success! Zero position found in {elapsed_time:.1f}s")
                         self._homing_event.clear()
                         self._homing_start_time = None
                         self.initialized = True
                         return
 
-                time.sleep(0.1)  # Check every 100ms
+                time.sleep(0.01)  # Check every 10ms for faster response
 
             # Timeout
             self.single_motor_control_interface.set_velocity(0.0)
@@ -280,6 +290,11 @@ class LinearRailController:
         self.single_motor_control_interface.set_velocity(0.0)
         self._homing_event.clear()
         self._homing_start_time = None
+
+    def is_homing(self) -> bool:
+        """Check if linear rail is currently homing"""
+        with self._lock:
+            return self._homing_event.is_set()
 
     def get_state(self) -> Dict[str, Any]:
         """Get the current state of the linear rail"""
