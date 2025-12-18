@@ -101,6 +101,7 @@ class VehicleMotorController:
         steering_direction: List[int],
         channel_name_or_motor_interface: str | DMChainCanInterface = "can_flow_base",
         num_casters: int = 4,
+        homing_check_callback: Optional[callable] = None,
     ):
         self.num_casters = num_casters
         if isinstance(channel_name_or_motor_interface, str):
@@ -119,6 +120,7 @@ class VehicleMotorController:
             ]
             * self.num_casters
         )
+        self.homing_check_callback = homing_check_callback  # Callback to check if homing is in progress
 
         print(f"dm chain can interface: {self.motor_interface} initialized")
 
@@ -189,12 +191,21 @@ class VehicleMotorController:
             vels[i * 2] = steer_vel[i]  # Steer motor
             vels[i * 2 + 1] = drive_vel[i]  # Drive motor
 
-        # Preserve velocities of additional motors (e.g., linear rail)
+
         if num_motors_in_chain > num_base_motors:
             with self.motor_interface.command_lock:
                 current_commands = self.motor_interface.commands
                 if current_commands and len(current_commands) == num_motors_in_chain:
                     vels[num_base_motors:] = [cmd.vel for cmd in current_commands[num_base_motors:]]
+                elif self.homing_check_callback is not None:
+                    try:
+                        if self.homing_check_callback():
+                            logger.warning(
+                                "Linear rail homing in progress but current_commands unavailable. "
+                                "Linear rail velocity may be set to zero."
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error checking homing status: {e}")
 
         self.motor_interface.set_commands(
             torques=np.zeros(num_motors_in_chain),
@@ -607,6 +618,10 @@ class LinearRailVehicle(Vehicle):
             auto_home=auto_home,
             homing_timeout=homing_timeout,
         )
+
+        # Set homing check callback for VehicleMotorController to prevent overwriting homing velocity
+        if hasattr(self, "caster_module_controller"):
+            self.caster_module_controller.homing_check_callback = lambda: self.linear_rail.is_homing()
 
     def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
         """Set target velocity for both base and linear rail.
