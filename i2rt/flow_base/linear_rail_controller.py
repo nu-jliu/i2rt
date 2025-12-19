@@ -27,6 +27,43 @@ HOMING_TIMEOUT = 30.0  # Timeout for homing procedure in seconds
 COMMAND_TIMEOUT = 0.25  # Timeout for command stream (2.5 * POLICY_CONTROL_PERIOD, where POLICY_CONTROL_PERIOD = 0.1s)
 
 
+def initialize_brake_gpio() -> None:
+    """Initialize brake control GPIO pin as an independent function.
+
+    This function can be called before LinearRailController initialization
+    to avoid blocking during class initialization.
+    """
+    try:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(BRAKE_CONTROL_GPIO, GPIO.OUT)
+        logger.info("Brake GPIO initialized")
+    except RuntimeError as e:
+        # GPIO mode already set, this is fine
+        if "mode" in str(e).lower() or "already" in str(e).lower():
+            try:
+                GPIO.setup(BRAKE_CONTROL_GPIO, GPIO.OUT)
+                logger.debug("Brake GPIO setup completed (mode was already set)")
+            except Exception as setup_error:
+                logger.warning(f"Brake GPIO setup failed: {setup_error}")
+        else:
+            logger.warning(f"Failed to initialize brake GPIO: {e}")
+    except Exception as e:
+        logger.error(f"Failed to initialize brake GPIO: {e}")
+        raise
+
+
+def set_brake_gpio(engaged: bool) -> None:
+    """Set brake GPIO state (engaged=True: brake on, engaged=False: brake off)."""
+    try:
+        GPIO.output(BRAKE_CONTROL_GPIO, GPIO.LOW if engaged else GPIO.HIGH)
+        action = "engaged" if engaged else "released"
+        logger.info(f"Brake {action}")
+    except Exception as e:
+        action = "engage" if engaged else "release"
+        logger.error(f"Failed to {action} brake: {e}")
+        raise
+
+
 class SingleMotorControlInterface:
     """Single motor control interface for motor chains"""
 
@@ -104,6 +141,7 @@ class LinearRailController:
         self.upper_limit_triggered = False
         self.lower_limit_triggered = False
         self._gpio_mode_set = False
+        self._gpio_initialized = False  # Flag to prevent duplicate GPIO initialization
         self._homing_event = threading.Event()
         self._homing_start_time = None
         self.homing_speed_ratio = HOMING_SPEED_RATIO
@@ -112,16 +150,17 @@ class LinearRailController:
         self.last_command_time = time.time() - 1000000  # Initialize to far past
         self.command_timeout = COMMAND_TIMEOUT
 
-        self._initialize_gpio()
+        # GPIO initialization is now done manually in flow_base_controller.py
+        # to avoid blocking during initialization
 
         if self.auto_home:
             self._initialize_linear_rail()
         else:
-            # If auto_home is False, just release brake and mark as initialized
-            self.set_brake(engaged=False)
+            # If auto_home is False, mark as initialized but don't release brake yet
+            # Brake will be released after GPIO is initialized in flow_base_controller.py
             with self._lock:
                 self.initialized = True
-            logger.info("Linear rail initialized without auto-homing")
+            logger.info("Linear rail initialized without auto-homing (GPIO will be initialized separately)")
 
     def _ensure_gpio_mode(self) -> None:
         """Ensure GPIO mode is set"""
@@ -130,19 +169,26 @@ class LinearRailController:
                 GPIO.setmode(GPIO.BCM)
                 self._gpio_mode_set = True
             except RuntimeError as e:
-                # GPIO mode already set by another process or previous call
-                # Check if the error message indicates mode is already set
                 if "mode" in str(e).lower() or "already" in str(e).lower():
                     self._gpio_mode_set = True
                 else:
-                    # Re-raise if it's a different RuntimeError
                     raise
 
-    def _initialize_gpio(self) -> None:
-        """Initialize GPIO pins for limit switches and brake control with event callbacks"""
+    def initialize_gpio(self) -> None:
+        """Initialize GPIO pins for limit switches and brake control with event callbacks.
+        
+        This method should be called manually after LinearRailController initialization
+        to avoid blocking during __init__.
+        """
+        # Prevent duplicate initialization
+        if self._gpio_initialized:
+            logger.debug("GPIO already initialized, skipping")
+            return
+        
         try:
             self._ensure_gpio_mode()
-            GPIO.setup(BRAKE_CONTROL_GPIO, GPIO.OUT)
+            # Brake GPIO is already initialized by initialize_brake_gpio() function
+            # Only setup limit switch GPIOs here
             GPIO.setup(UPPER_LIMIT_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.setup(LOWER_LIMIT_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
@@ -174,9 +220,11 @@ class LinearRailController:
                 bouncetime=50,  # Debounce time in milliseconds
             )
 
+            self._gpio_initialized = True
             logger.info("GPIO initialized successfully with event callbacks for limit switches")
         except Exception as e:
             logger.error(f"GPIO initialization failed: {e}")
+            raise
 
     def _limit_switch_callback(self, channel: int, is_upper: bool) -> None:
         """Generic callback function for limit switch GPIO events - only updates limit state
@@ -215,12 +263,10 @@ class LinearRailController:
     def set_brake(self, engaged: bool) -> None:
         """Set brake state (engaged=True: brake on, engaged=False: brake off)"""
         try:
-            self._ensure_gpio_mode()
-            GPIO.output(BRAKE_CONTROL_GPIO, GPIO.LOW if engaged else GPIO.HIGH)
+            # Use the independent brake GPIO function
+            set_brake_gpio(engaged)
             with self._lock:
                 self.brake_on = engaged
-            action = "engaged" if engaged else "released"
-            logger.info(f"Brake {action}")
         except Exception as e:
             action = "engage" if engaged else "release"
             logger.error(f"Failed to {action} brake: {e}")
