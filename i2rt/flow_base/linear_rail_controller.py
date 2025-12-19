@@ -129,9 +129,14 @@ class LinearRailController:
             try:
                 GPIO.setmode(GPIO.BCM)
                 self._gpio_mode_set = True
-            except RuntimeError:
-                # GPIO mode already set
-                self._gpio_mode_set = True
+            except RuntimeError as e:
+                # GPIO mode already set by another process or previous call
+                # Check if the error message indicates mode is already set
+                if "mode" in str(e).lower() or "already" in str(e).lower():
+                    self._gpio_mode_set = True
+                else:
+                    # Re-raise if it's a different RuntimeError
+                    raise
 
     def _initialize_gpio(self) -> None:
         """Initialize GPIO pins for limit switches and brake control with event callbacks"""
@@ -362,10 +367,15 @@ class LinearRailController:
         try:
             self.single_motor_control_interface.set_velocity(0.0)
             if self.initialized:
-                self.set_brake(engaged=True)
-                GPIO.remove_event_detect(UPPER_LIMIT_GPIO)
-                GPIO.remove_event_detect(LOWER_LIMIT_GPIO)
-                GPIO.cleanup()
+                # Ensure GPIO mode is set before cleanup operations
+                try:
+                    self._ensure_gpio_mode()
+                    self.set_brake(engaged=True)
+                    GPIO.remove_event_detect(UPPER_LIMIT_GPIO)
+                    GPIO.remove_event_detect(LOWER_LIMIT_GPIO)
+                    GPIO.cleanup()
+                except Exception as gpio_error:
+                    logger.warning(f"GPIO cleanup error (may be expected if GPIO was not initialized): {gpio_error}")
             logger.info("Linear rail controller cleaned up successfully")
         except Exception as e:
             logger.error(f"Cleanup error: {e}")

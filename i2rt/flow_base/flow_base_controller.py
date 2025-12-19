@@ -370,8 +370,9 @@ class Vehicle(Robot):
 
     def stop_control(self) -> None:
         self.control_loop_running = False
-        self.control_loop_thread.join()
-        self.control_loop_thread = None
+        if self.control_loop_thread is not None:
+            self.control_loop_thread.join()
+            self.control_loop_thread = None
 
     def control_loop(self) -> None:
         # Set real-time scheduling policy
@@ -524,8 +525,10 @@ class Vehicle(Robot):
     def close(self) -> None:
         """Clean up resources: stop control loop and set motors to neutral."""
         try:
-            self.stop_control()
-            self.caster_module_controller.set_neutral()
+            if self.control_loop_running:
+                self.stop_control()
+            if hasattr(self, "caster_module_controller"):
+                self.caster_module_controller.set_neutral()
             logger.info("Vehicle closed successfully")
         except Exception as e:
             logger.error(f"Vehicle close error: {e}")
