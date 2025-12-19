@@ -191,7 +191,6 @@ class VehicleMotorController:
             vels[i * 2] = steer_vel[i]  # Steer motor
             vels[i * 2 + 1] = drive_vel[i]  # Drive motor
 
-
         if num_motors_in_chain > num_base_motors:
             with self.motor_interface.command_lock:
                 current_commands = self.motor_interface.commands
@@ -602,6 +601,7 @@ class LinearRailVehicle(Vehicle):
         # Initialize brake GPIO only if linear rail is enabled
         if enable_linear_rail:
             from i2rt.flow_base.linear_rail_controller import initialize_brake_gpio
+
             initialize_brake_gpio()
 
         # Initialize vehicle base with the unified motor chain using super().__init__()
@@ -621,7 +621,9 @@ class LinearRailVehicle(Vehicle):
             )
 
             # Create single motor control interface for the linear rail (9th motor, index 8)
-            single_motor_interface = SingleMotorControlInterface.from_multi_motor_chain(unified_motor_chain, lift_motor_id)
+            single_motor_interface = SingleMotorControlInterface.from_multi_motor_chain(
+                unified_motor_chain, lift_motor_id
+            )
 
             # Initialize linear rail controller (without auto_home to initialize GPIO first)
             self.linear_rail = LinearRailController(
@@ -640,7 +642,9 @@ class LinearRailVehicle(Vehicle):
 
             # Set homing check callback for VehicleMotorController to prevent overwriting homing velocity
             if hasattr(self, "caster_module_controller"):
-                self.caster_module_controller.homing_check_callback = lambda: self.linear_rail.is_homing() if self.linear_rail else False
+                self.caster_module_controller.homing_check_callback = (
+                    lambda: self.linear_rail.is_homing() if self.linear_rail else False
+                )
 
     def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
         """Set target velocity for both base and linear rail.
