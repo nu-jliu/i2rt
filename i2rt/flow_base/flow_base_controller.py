@@ -546,9 +546,10 @@ class LinearRailVehicle(Vehicle):
         lift_motor_type: str = "DM8009",
         auto_home: bool = True,
         homing_timeout: float = 30.0,
+        enable_linear_rail: bool = True,
     ):
         """
-        Initialize LinearRailVehicle with a linear rail lift module.
+        Initialize LinearRailVehicle with optional linear rail lift module.
 
         Args:
             vehicle_max_vel: Maximum velocity for vehicle base (x, y, theta)
@@ -560,9 +561,9 @@ class LinearRailVehicle(Vehicle):
             lift_motor_type: Motor type (e.g., "DM4310", "DM8009")
             auto_home: Whether to automatically home the linear rail on initialization
             homing_timeout: Timeout for homing procedure (seconds)
+            enable_linear_rail: Whether to enable linear rail. If False, only base (8 motors) will be initialized.
         """
-        # Create a unified motor chain with 9 motors: 8 base motors + 1 linear rail motor
-        # First, create the base motor list (8 motors: 4 casters * 2 motors each)
+        # Create base motor list (8 motors: 4 casters * 2 motors each)
         motor_list = []
         motor_offsets = []
         motor_directions = []
@@ -582,20 +583,26 @@ class LinearRailVehicle(Vehicle):
             motor_list.append([steering_motor_id, "DM4310V"])
             motor_list.append([drive_motor_id, "DM_FLOW_WHEEL"])
 
-        # Add linear rail motor (9th motor)
-        motor_list.append([lift_motor_id, lift_motor_type])
-        motor_offsets.append(0.0)
-        motor_directions.append(1)
+        # Conditionally add linear rail motor (9th motor)
+        if enable_linear_rail:
+            motor_list.append([lift_motor_id, lift_motor_type])
+            motor_offsets.append(0.0)
+            motor_directions.append(1)
 
-        # Create unified motor chain with all 9 motors
+        # Create unified motor chain
         unified_motor_chain = DMChainCanInterface(
             motor_list=motor_list,
             motor_offset=np.array(motor_offsets),
             motor_direction=np.array(motor_directions),
             channel=channel,
-            motor_chain_name="linear_rail_vehicle",
+            motor_chain_name="linear_rail_vehicle" if enable_linear_rail else "holonomic_base",
             control_mode=ControlMode.VEL,
         )
+
+        # Initialize brake GPIO only if linear rail is enabled
+        if enable_linear_rail:
+            from i2rt.flow_base.linear_rail_controller import initialize_brake_gpio
+            initialize_brake_gpio()
 
         # Initialize vehicle base with the unified motor chain using super().__init__()
         super().__init__(
@@ -605,26 +612,35 @@ class LinearRailVehicle(Vehicle):
             auto_start=auto_start,
         )
 
-        # Initialize linear rail using the same unified motor chain
-        from i2rt.flow_base.linear_rail_controller import (
-            LinearRailController,
-            SingleMotorControlInterface,
-        )
+        # Initialize linear rail only if enabled
+        self.linear_rail = None
+        if enable_linear_rail:
+            from i2rt.flow_base.linear_rail_controller import (
+                LinearRailController,
+                SingleMotorControlInterface,
+            )
 
-        # Create single motor control interface for the linear rail (9th motor, index 8)
-        single_motor_interface = SingleMotorControlInterface.from_multi_motor_chain(unified_motor_chain, lift_motor_id)
+            # Create single motor control interface for the linear rail (9th motor, index 8)
+            single_motor_interface = SingleMotorControlInterface.from_multi_motor_chain(unified_motor_chain, lift_motor_id)
 
-        # Initialize linear rail controller
-        self.linear_rail = LinearRailController(
-            single_motor_control_interface=single_motor_interface,
-            rail_speed=lift_max_vel,
-            auto_home=auto_home,
-            homing_timeout=homing_timeout,
-        )
+            # Initialize linear rail controller (without auto_home to initialize GPIO first)
+            self.linear_rail = LinearRailController(
+                single_motor_control_interface=single_motor_interface,
+                rail_speed=lift_max_vel,
+                auto_home=False,  # Don't auto home yet, initialize GPIO first
+                homing_timeout=homing_timeout,
+            )
 
-        # Set homing check callback for VehicleMotorController to prevent overwriting homing velocity
-        if hasattr(self, "caster_module_controller"):
-            self.caster_module_controller.homing_check_callback = lambda: self.linear_rail.is_homing()
+            # Initialize GPIO early, before starting homing
+            self.linear_rail.initialize_gpio()
+
+            # Now start homing if requested
+            if auto_home:
+                self.linear_rail._initialize_linear_rail()
+
+            # Set homing check callback for VehicleMotorController to prevent overwriting homing velocity
+            if hasattr(self, "caster_module_controller"):
+                self.caster_module_controller.homing_check_callback = lambda: self.linear_rail.is_homing() if self.linear_rail else False
 
     def set_target_velocity(self, velocity: Any, frame: str = "local") -> None:
         """Set target velocity for both base and linear rail.
@@ -645,7 +661,8 @@ class LinearRailVehicle(Vehicle):
             base_velocity = velocity[:3]
             linear_rail_velocity = velocity[3]
             super().set_target_velocity(base_velocity, frame)
-            self.set_linear_rail_velocity(linear_rail_velocity)
+            if self.linear_rail is not None:
+                self.set_linear_rail_velocity(linear_rail_velocity)
         else:
             raise ValueError(
                 f"Velocity must be 3D [x, y, theta] or 4D [x, y, theta, linear_rail_vel], "
@@ -658,6 +675,8 @@ class LinearRailVehicle(Vehicle):
         Args:
             input_dict: Optional dictionary (unused, for API compatibility)
         """
+        if self.linear_rail is None:
+            return {"error": "Linear rail not available"}
         state = self.linear_rail.get_state()
         if "motor_state" in state:
             state = {k: v for k, v in state.items() if k != "motor_state"}
@@ -669,6 +688,9 @@ class LinearRailVehicle(Vehicle):
         Args:
             velocity: Target velocity in rad/s
         """
+        if self.linear_rail is None:
+            logger.warning("Linear rail not available, ignoring velocity command")
+            return
         try:
             self.linear_rail.set_velocity(velocity)
         except AssertionError as e:
@@ -695,6 +717,11 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--channel", type=str, default="can0")
+    parser.add_argument(
+        "--no-linear-rail",
+        action="store_true",
+        help="Disable linear rail (use only 8 base motors)",
+    )
 
     # Initialize pygame and joystick
     pygame.init()
@@ -714,12 +741,14 @@ if __name__ == "__main__":
     lift_max_vel = 14.0  # Maximum velocity for linear rail (rad/s)
 
     # Use LinearRailVehicle instead of Vehicle
+    # Use --no-linear-rail flag if you only have base (8 motors) without linear rail
     vehicle = LinearRailVehicle(
         vehicle_max_vel=max_vel,
         vehicle_max_accel=max_accel,
         lift_max_vel=lift_max_vel,
         channel=args.channel,
         auto_home=True,
+        enable_linear_rail=not args.no_linear_rail,  # Enable by default, disable with --no-linear-rail
     )
 
     # Register cleanup function to ensure brake is engaged on exit

@@ -69,7 +69,7 @@ class FlowBaseClient:
     def close(self) -> None:
         """Stop the client and clean up resources."""
         self.running = False
-        if hasattr(self, "_thread") and self._thread.is_alive():
+        if  self._thread.is_alive():
             self._thread.join(timeout=1.0)
 
 
