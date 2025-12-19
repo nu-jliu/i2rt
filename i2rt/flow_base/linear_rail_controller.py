@@ -104,13 +104,11 @@ class SingleMotorControlInterface:
         return self.motor_chain.read_states()[self.target_motor_idx]
 
     @classmethod
-    def from_multi_motor_chain(cls, motor_chain: DMChainCanInterface, motor_id: int) -> "SingleMotorControlInterface":
-        """Create SingleMotorControlInterface from an existing multi-motor chain, here motor_id is the can ID not the index"""
-        for target_motor_idx, (m_id, _) in enumerate(motor_chain.motor_list):
-            if m_id == motor_id:
-                return cls(motor_chain, target_motor_idx=target_motor_idx)
-
-        raise ValueError(f"Motor with ID {motor_id} not found in motor chain")
+    def from_multi_motor_chain(
+        cls, motor_chain: DMChainCanInterface, target_motor_idx: int
+    ) -> "SingleMotorControlInterface":
+        """Create SingleMotorControlInterface from an existing multi-motor chain using motor index"""
+        return cls(motor_chain, target_motor_idx=target_motor_idx)
 
 
 class LinearRailController:

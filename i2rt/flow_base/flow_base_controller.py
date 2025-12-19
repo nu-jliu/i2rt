@@ -622,7 +622,7 @@ class LinearRailVehicle(Vehicle):
 
             # Create single motor control interface for the linear rail (9th motor, index 8)
             single_motor_interface = SingleMotorControlInterface.from_multi_motor_chain(
-                unified_motor_chain, lift_motor_id
+                unified_motor_chain, target_motor_idx=8
             )
 
             # Initialize linear rail controller (without auto_home to initialize GPIO first)
