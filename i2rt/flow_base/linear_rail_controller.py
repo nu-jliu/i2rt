@@ -176,7 +176,7 @@ class LinearRailController:
 
     def initialize_gpio(self) -> None:
         """Initialize GPIO pins for limit switches and brake control with event callbacks.
-        
+
         This method should be called manually after LinearRailController initialization
         to avoid blocking during __init__.
         """
@@ -184,7 +184,7 @@ class LinearRailController:
         if self._gpio_initialized:
             logger.debug("GPIO already initialized, skipping")
             return
-        
+
         try:
             self._ensure_gpio_mode()
             # Brake GPIO is already initialized by initialize_brake_gpio() function
@@ -299,15 +299,15 @@ class LinearRailController:
             start_time = time.time()
             last_velocity_set_time = start_time
             velocity_set_interval = 0.05  # Re-set velocity every 50ms to prevent overwrite
-            
+
             while time.time() - start_time < self.homing_timeout:
                 current_time = time.time()
-                
+
                 # Continuously re-apply homing velocity to prevent base controller from overwriting it
                 if current_time - last_velocity_set_time >= velocity_set_interval:
                     self.single_motor_control_interface.set_velocity(motor_velocity)
                     last_velocity_set_time = current_time
-                
+
                 with self._lock:
                     if self.lower_limit_triggered:
                         # Reached lower limit, stop motor
