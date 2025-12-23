@@ -225,7 +225,9 @@ class LinearRailController:
             raise
 
     def _limit_switch_callback(self, channel: int, is_upper: bool) -> None:
-        """Generic callback function for limit switch GPIO events - only updates limit state
+        """Generic callback function for limit switch GPIO events - updates limit state and stops motor immediately
+
+        The GPIO interrupt will still trigger and stop the motor when limit switches are activated.
 
         Args:
             channel: GPIO channel number
@@ -242,10 +244,11 @@ class LinearRailController:
                 else:
                     self.lower_limit_triggered = limit_state
 
-                if limit_state:
-                    logger.warning(f"{limit_name.capitalize()} limit switch triggered!")
-                else:
-                    logger.info(f"{limit_name.capitalize()} limit switch released")
+            if limit_state:
+                logger.warning(f"{limit_name.capitalize()} limit switch triggered!")
+                self.single_motor_control_interface.set_velocity(0.0)
+            else:
+                logger.info(f"{limit_name.capitalize()} limit switch released")
         except Exception as e:
             limit_name = "upper" if is_upper else "lower"
             logger.error(f"Error in {limit_name} limit callback: {e}")
