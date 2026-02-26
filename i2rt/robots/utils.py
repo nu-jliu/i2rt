@@ -37,6 +37,17 @@ def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia
     Replaces the <body name="link_6"> subtree in the arm XML with the one from the
     gripper XML (if present). If ee_mass or ee_inertia are provided, update the
     inertial properties of the resulting link_6. Returns path to combined XML in /tmp/.
+
+    Args:
+        arm_path: Path to the arm MuJoCo XML file.
+        gripper_path: Path to the gripper MuJoCo XML file. If falsy, the arm XML
+            is used as-is (no gripper replacement).
+        ee_mass: Optional end-effector mass (kg) to override in link_6's inertial.
+        ee_inertia: Optional end-effector inertia array. Expected as a flat array of
+            10 elements: [ipos(3), quat(4), diaginertia(3)].
+
+    Returns:
+        Path to the combined XML file written to /tmp/.
     """
     arm_tree = ET.parse(arm_path)
     arm_root = arm_tree.getroot()
