@@ -2,7 +2,10 @@ import enum
 import logging
 import os
 import queue
+import tempfile
 import time
+import xml.etree.ElementTree as ET
+from copy import deepcopy
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -26,6 +29,112 @@ GRIPPER_ARX_DEFAULT_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/arx_def
 
 # Backward compat alias (used by kinematics.py and test_kinematics.py)
 YAM_XML_PATH = ARM_YAM_XML_PATH
+
+
+def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia=None) -> str:
+    """Combine arm and gripper XML files into a single XML string.
+
+    Replaces the <body name="link_6"> subtree in the arm XML with the one from the
+    gripper XML (if present). If ee_mass or ee_inertia are provided, update the
+    inertial properties of the resulting link_6. Returns path to combined XML in /tmp/.
+    """
+    arm_tree = ET.parse(arm_path)
+    arm_root = arm_tree.getroot()
+
+    # Resolve arm mesh paths to absolute
+    arm_dir = os.path.dirname(os.path.abspath(arm_path))
+    arm_compiler = arm_root.find("compiler")
+    arm_meshdir = arm_compiler.get("meshdir", "") if arm_compiler is not None else ""
+    arm_asset = arm_root.find("asset")
+    if arm_asset is not None:
+        for child in arm_asset:
+            if child.get("file") and not os.path.isabs(child.get("file")):
+                abs_file = os.path.join(arm_dir, arm_meshdir, child.get("file"))
+                child.set("file", os.path.abspath(abs_file))
+
+    # Remove meshdir from compiler (all paths now absolute)
+    if arm_compiler is not None and arm_compiler.get("meshdir"):
+        del arm_compiler.attrib["meshdir"]
+
+    # attempt to load gripper and replace link_6 if available
+    if gripper_path:
+        try:
+            grip_tree = ET.parse(gripper_path)
+            grip_root = grip_tree.getroot()
+            grip_body = grip_root.find(".//body[@name='link_6']")
+            if grip_body is None:
+                grip_body = grip_root.find(".//body[@name='link6']")
+        except Exception:
+            grip_root = None
+            grip_body = None
+
+        # merge assets (avoid duplicates), resolving gripper mesh paths to absolute
+        if grip_root is not None:
+            grip_dir = os.path.dirname(os.path.abspath(gripper_path))
+            grip_compiler = grip_root.find("compiler")
+            grip_meshdir = grip_compiler.get("meshdir", "") if grip_compiler is not None else ""
+
+            grip_asset = grip_root.find("asset")
+            if grip_asset is not None:
+                if arm_asset is None:
+                    arm_asset = ET.Element("asset")
+                    worldbody = arm_root.find("worldbody")
+                    if worldbody is not None:
+                        arm_root.insert(list(arm_root).index(worldbody), arm_asset)
+                    else:
+                        arm_root.append(arm_asset)
+                existing = {(c.tag, c.get("name")) for c in arm_asset}
+                for child in grip_asset:
+                    key = (child.tag, child.get("name"))
+                    if key not in existing:
+                        elem = deepcopy(child)
+                        if elem.get("file") and not os.path.isabs(elem.get("file")):
+                            abs_file = os.path.join(grip_dir, grip_meshdir, elem.get("file"))
+                            elem.set("file", os.path.abspath(abs_file))
+                        arm_asset.append(elem)
+                        existing.add(key)
+
+        # replace arm's link_6 with gripper's if found
+        if grip_body is not None:
+            replaced = False
+            for parent in arm_root.iter():
+                children = list(parent)
+                for idx, child in enumerate(children):
+                    if child.tag == "body" and child.get("name") in ("link_6", "link6"):
+                        parent.remove(child)
+                        parent.insert(idx, deepcopy(grip_body))
+                        replaced = True
+                        break
+                if replaced:
+                    break
+
+    # find resulting link_6 and apply end-effector overrides (mass/inertia)
+    if ee_mass is not None or ee_inertia is not None:
+        res_body = arm_root.find(".//body[@name='link_6']")
+        if res_body is None:
+            res_body = arm_root.find(".//body[@name='link6']")
+        if res_body is not None:
+            inertial = res_body.find("inertial")
+            if inertial is None:
+                inertial = ET.SubElement(res_body, "inertial")
+
+            if ee_mass is not None:
+                inertial.set("mass", str(float(ee_mass)))
+
+            if ee_inertia is not None:
+                arr = np.asarray(ee_inertia).ravel()
+                ipos = " ".join(str(float(x)) for x in arr[:3])
+                inertial.set("ipos", ipos)
+                quat = " ".join(str(float(x)) for x in arr[3:7])
+                inertial.set("quat", quat)
+                diagin = " ".join(str(float(x)) for x in arr[-3:])
+                inertial.set("diaginertia", diagin)
+
+    # write combined xml to /tmp/ and return filepath
+    out_path = tempfile.NamedTemporaryFile(suffix=".xml", prefix="i2rt_combined_", delete=False, dir="/tmp").name
+    arm_tree.write(out_path, encoding="utf-8", xml_declaration=True)
+    return out_path
+
 
 class ArmType(enum.Enum):
     YAM = "yam"

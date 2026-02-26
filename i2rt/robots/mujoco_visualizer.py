@@ -14,6 +14,7 @@ import numpy as np
 
 from i2rt.robots.robot import Robot
 from i2rt.robots.utils import ArmType, GripperType
+from i2rt.robots.motor_chain_robot import MotorChainRobot
 
 
 class MujocoVisualizer:
