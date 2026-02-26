@@ -23,10 +23,25 @@ def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia
 
     Replaces the <body name="link_6"> subtree in the arm XML with the one from the
     gripper XML (if present). If ee_mass or ee_inertia are provided, update the
-    inertial properties of the resulting link_6. Returns the combined XML as a string.
+    inertial properties of the resulting link_6. Returns path to combined XML in /tmp/.
     """
     arm_tree = ET.parse(arm_path)
     arm_root = arm_tree.getroot()
+
+    # Resolve arm mesh paths to absolute
+    arm_dir = os.path.dirname(os.path.abspath(arm_path))
+    arm_compiler = arm_root.find("compiler")
+    arm_meshdir = arm_compiler.get("meshdir", "") if arm_compiler is not None else ""
+    arm_asset = arm_root.find("asset")
+    if arm_asset is not None:
+        for child in arm_asset:
+            if child.get("file") and not os.path.isabs(child.get("file")):
+                abs_file = os.path.join(arm_dir, arm_meshdir, child.get("file"))
+                child.set("file", os.path.abspath(abs_file))
+
+    # Remove meshdir from compiler (all paths now absolute)
+    if arm_compiler is not None and arm_compiler.get("meshdir"):
+        del arm_compiler.attrib["meshdir"]
 
     # attempt to load gripper and replace link_6 if available
     if gripper_path:
@@ -34,12 +49,18 @@ def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia
             grip_tree = ET.parse(gripper_path)
             grip_root = grip_tree.getroot()
             grip_body = grip_root.find(".//body[@name='link_6']")
+            if grip_body is None:
+                grip_body = grip_root.find(".//body[@name='link6']")
         except Exception:
+            grip_root = None
             grip_body = None
 
-        # merge assets (avoid duplicates)
+        # merge assets (avoid duplicates), resolving gripper mesh paths to absolute
         if grip_root is not None:
-            arm_asset = arm_root.find("asset")
+            grip_dir = os.path.dirname(os.path.abspath(gripper_path))
+            grip_compiler = grip_root.find("compiler")
+            grip_meshdir = grip_compiler.get("meshdir", "") if grip_compiler is not None else ""
+
             grip_asset = grip_root.find("asset")
             if grip_asset is not None:
                 if arm_asset is None:
@@ -53,7 +74,11 @@ def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia
                 for child in grip_asset:
                     key = (child.tag, child.get("name"))
                     if key not in existing:
-                        arm_asset.append(deepcopy(child))
+                        elem = deepcopy(child)
+                        if elem.get("file") and not os.path.isabs(elem.get("file")):
+                            abs_file = os.path.join(grip_dir, grip_meshdir, elem.get("file"))
+                            elem.set("file", os.path.abspath(abs_file))
+                        arm_asset.append(elem)
                         existing.add(key)
 
         # replace arm's link_6 with gripper's if found
@@ -62,7 +87,7 @@ def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia
             for parent in arm_root.iter():
                 children = list(parent)
                 for idx, child in enumerate(children):
-                    if child.tag == "body" and child.get("name") == "link_6":
+                    if child.tag == "body" and child.get("name") in ("link_6", "link6"):
                         parent.remove(child)
                         parent.insert(idx, deepcopy(grip_body))
                         replaced = True
@@ -71,29 +96,29 @@ def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia
                     break
 
     # find resulting link_6 and apply end-effector overrides (mass/inertia)
-    res_body = arm_root.find(".//body[@name='link_6']")
-    if res_body is not None:
-        inertial = res_body.find("inertial")
-        if inertial is None:
-            inertial = ET.SubElement(res_body, "inertial")
+    if ee_mass is not None or ee_inertia is not None:
+        res_body = arm_root.find(".//body[@name='link_6']")
+        if res_body is None:
+            res_body = arm_root.find(".//body[@name='link6']")
+        if res_body is not None:
+            inertial = res_body.find("inertial")
+            if inertial is None:
+                inertial = ET.SubElement(res_body, "inertial")
 
-        if ee_mass is not None:
-            inertial.set("mass", str(float(ee_mass)))
+            if ee_mass is not None:
+                inertial.set("mass", str(float(ee_mass)))
 
-        if ee_inertia is not None:
-            arr = np.asarray(ee_inertia).ravel()
-            ipos = " ".join(str(float(x)) for x in arr[:3])
-            inertial.set("ipos", ipos)
-            quat = " ".join(str(float(x)) for x in arr[3:7])
-            inertial.set("quat", quat)
-            diagin = " ".join(str(float(x)) for x in arr[-3:])
-            inertial.set("diaginertia", diagin)
+            if ee_inertia is not None:
+                arr = np.asarray(ee_inertia).ravel()
+                ipos = " ".join(str(float(x)) for x in arr[:3])
+                inertial.set("ipos", ipos)
+                quat = " ".join(str(float(x)) for x in arr[3:7])
+                inertial.set("quat", quat)
+                diagin = " ".join(str(float(x)) for x in arr[-3:])
+                inertial.set("diaginertia", diagin)
 
-    # return XML string (with declaration)
-    # xml_str = ET.tostring(arm_root, encoding="unicode")
-    # return xml_str
-    # write combined xml to file (out_path or temp file) and return filepath
-    out_path = os.path.split(arm_path)[0] + "/combined_arm_gripper.xml"
+    # write combined xml to /tmp/ and return filepath
+    out_path = tempfile.NamedTemporaryFile(suffix=".xml", prefix="i2rt_combined_", delete=False, dir="/tmp").name
     arm_tree.write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
 
@@ -108,8 +133,9 @@ def get_yam_robot(
     gripper_type: GripperType = GripperType.CRANK_4310,
     zero_gravity_mode: bool = True,
     ee_mass: Optional[float] = None, # scalar
-    ee_inertia: Optional[np.ndarray] = None, # 10-dim array: ipos(3) + quat(4) + diaginertia(3) or full inertia(6)  
-) -> MotorChainRobot:
+    ee_inertia: Optional[np.ndarray] = None, # 10-dim array: ipos(3) + quat(4) + diaginertia(3) or full inertia(6)
+    sim: bool = False,
+) -> "MotorChainRobot":
     with_gripper = True
     with_teaching_handle = False
     if gripper_type == GripperType.YAM_TEACHING_HANDLE:
@@ -151,6 +177,20 @@ def get_yam_robot(
         motor_directions.append(1)
         kp = np.concatenate([kp, np.array([gripper_kp])])
         kd = np.concatenate([kd, np.array([gripper_kd])])
+
+    if sim:
+        from i2rt.robots.sim_robot import SimRobot
+
+        n_dofs = len(motor_list)
+        gripper_index = 6 if with_gripper else None
+        gripper_lims = gripper_type.get_gripper_limits() if with_gripper else None
+        return SimRobot(
+            xml_path=model_path,
+            n_dofs=n_dofs,
+            joint_limits=joint_limits,
+            gripper_index=gripper_index,
+            gripper_limits=gripper_lims,
+        )
 
     motor_chain = DMChainCanInterface(
         motor_list,

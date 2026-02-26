@@ -11,14 +11,21 @@ import numpy as np
 from i2rt.motor_drivers.dm_driver import DMChainCanInterface
 
 I2RT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-YAM_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam.xml")
-YAM_XML_LW_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_lw_gripper.xml")
-YAM_XML_LINEAR_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_4310_linear.xml")
-YAM_TEACHING_HANDLE_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_teaching_handle.xml")
-YAM_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam_no_gripper.xml")
 
-ARM_YAM_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/yam/yam.xml")
-ARM_ARX_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arx/arx.xml")
+# Arm XML paths
+ARM_YAM_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/yam/yam.xml")
+ARM_ARX_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/arx/arx.xml")
+
+# Gripper XML paths
+GRIPPER_CRANK_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/crank_4310/crank_4310.xml")
+GRIPPER_LINEAR_3507_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_3507/linear_3507.xml")
+GRIPPER_LINEAR_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_4310/linear_4310.xml")
+GRIPPER_TEACHING_HANDLE_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/yam_teaching_handle/yam_teaching_handle.xml")
+GRIPPER_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/no_gripper/no_gripper.xml")
+GRIPPER_ARX_DEFAULT_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/arx_default/arx_default.xml")
+
+# Backward compat alias (used by kinematics.py and test_kinematics.py)
+YAM_XML_PATH = ARM_YAM_XML_PATH
 
 class ArmType(enum.Enum):
     YAM = "yam"
@@ -53,6 +60,9 @@ class GripperType(enum.Enum):
     YAM_TEACHING_HANDLE = "yam_teaching_handle"
     NO_GRIPPER = "no_gripper"
 
+    # ARX default gripper
+    ARX_DEFAULT = "arx_default"
+
     @classmethod
     def from_string_name(cls, name: str) -> "GripperType":
         if name == "crank_4310":
@@ -65,6 +75,8 @@ class GripperType(enum.Enum):
             return cls.YAM_TEACHING_HANDLE
         elif name == "no_gripper":
             return cls.NO_GRIPPER
+        elif name == "arx_default":
+            return cls.ARX_DEFAULT
         else:
             raise ValueError(
                 f"Unknown gripper type: {name}, gripper has to be one of the following: {GripperType.available_grippers()}"
@@ -79,7 +91,7 @@ class GripperType(enum.Enum):
             return 0.0, -2.7
         elif self in [GripperType.LINEAR_3507, GripperType.LINEAR_4310]:
             return None
-        elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER]:
+        elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER, GripperType.ARX_DEFAULT]:
             return None
 
     def get_gripper_needs_calibration(self) -> bool:
@@ -87,20 +99,22 @@ class GripperType(enum.Enum):
             return False
         elif self in [GripperType.LINEAR_3507, GripperType.LINEAR_4310]:
             return True
-        elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER]:
+        elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER, GripperType.ARX_DEFAULT]:
             return False
 
     def get_xml_path(self) -> str:
         if self == GripperType.CRANK_4310:
-            return YAM_XML_PATH
+            return GRIPPER_CRANK_4310_PATH
         elif self == GripperType.LINEAR_3507:
-            return YAM_XML_LW_GRIPPER_PATH
+            return GRIPPER_LINEAR_3507_PATH
         elif self == GripperType.LINEAR_4310:
-            return YAM_XML_LINEAR_4310_PATH
+            return GRIPPER_LINEAR_4310_PATH
         elif self == GripperType.YAM_TEACHING_HANDLE:
-            return YAM_TEACHING_HANDLE_PATH
+            return GRIPPER_TEACHING_HANDLE_PATH
         elif self == GripperType.NO_GRIPPER:
-            return YAM_NO_GRIPPER_PATH
+            return GRIPPER_NO_GRIPPER_PATH
+        elif self == GripperType.ARX_DEFAULT:
+            return GRIPPER_ARX_DEFAULT_PATH
         else:
             raise ValueError(f"Unknown gripper type: {self}")
 
@@ -111,6 +125,8 @@ class GripperType(enum.Enum):
             return 10, 0.3
         elif self == GripperType.YAM_TEACHING_HANDLE:
             return -1.0, -1.0  # no kp or kd for teaching handle
+        elif self == GripperType.ARX_DEFAULT:
+            raise NotImplementedError("ARX_DEFAULT gripper motor kp/kd not yet defined")
         else:
             raise ValueError(f"Unknown gripper type: {self}")
 
@@ -121,6 +137,8 @@ class GripperType(enum.Enum):
             return "DM3507"
         elif self == GripperType.YAM_TEACHING_HANDLE:
             return ""  # or raise NotImplementedError
+        elif self == GripperType.ARX_DEFAULT:
+            raise NotImplementedError("ARX_DEFAULT gripper motor type not yet defined")
         else:
             raise ValueError(f"Unknown gripper type: {self}")
 
@@ -168,6 +186,8 @@ class GripperType(enum.Enum):
             )
         elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER]:
             return -1.0, -1.0, -1.0, None
+        elif self == GripperType.ARX_DEFAULT:
+            raise NotImplementedError("ARX_DEFAULT gripper limiter params not yet defined")
 
 
 class JointMapper:
