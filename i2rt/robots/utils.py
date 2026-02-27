@@ -27,9 +27,6 @@ GRIPPER_TEACHING_HANDLE_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/yam
 GRIPPER_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/no_gripper/no_gripper.xml")
 GRIPPER_ARX_DEFAULT_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/arx_default/arx_default.xml")
 
-# Backward compat alias (used by kinematics.py and test_kinematics.py)
-YAM_XML_PATH = ARM_YAM_XML_PATH
-
 
 def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia=None) -> str:
     """Combine arm and gripper XML files into a single XML string.
@@ -167,6 +164,14 @@ class ArmType(enum.Enum):
             return ARM_ARX_XML_PATH
         elif self == ArmType.YAM:
             return ARM_YAM_XML_PATH
+        else:
+            raise ValueError(f"Unknown arm type: {self}")
+
+    def get_urdf_xacro_path(self) -> str:
+        if self == ArmType.YAM:
+            return ARM_YAM_URDF_XACRO_PATH
+        elif self == ArmType.ARX:
+            return ARM_ARX_URDF_XACRO_PATH
         else:
             raise ValueError(f"Unknown arm type: {self}")
 

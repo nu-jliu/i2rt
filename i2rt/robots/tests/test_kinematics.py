@@ -2,12 +2,12 @@ import numpy as np
 import pytest
 
 from i2rt.robots.kinematics import Kinematics
-from i2rt.robots.utils import YAM_XML_PATH
+from i2rt.robots.utils import ARM_YAM_XML_PATH
 
 
 @pytest.fixture
 def kinematics_yam() -> Kinematics:
-    return Kinematics(YAM_XML_PATH, "grasp_site")
+    return Kinematics(ARM_YAM_XML_PATH, "grasp_site")
 
 
 def test_fk(kinematics_yam: Kinematics) -> None:

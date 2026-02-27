@@ -110,9 +110,9 @@ class Kinematics:
 
 
 def main() -> None:
-    from i2rt.robots.utils import YAM_XML_PATH
+    from i2rt.robots.utils import ARM_YAM_XML_PATH
 
-    mj_model = Kinematics(YAM_XML_PATH, "grasp_site")
+    mj_model = Kinematics(ARM_YAM_XML_PATH, "grasp_site")
     q = np.zeros(6)
     pose = mj_model.fk(q)
     print(pose)
