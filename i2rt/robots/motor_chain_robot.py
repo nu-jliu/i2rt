@@ -74,7 +74,7 @@ class MotorChainRobot(Robot):
         gripper_limits: Optional[np.ndarray] = None,  # [closed, open]
         limit_gripper_force: float = -1,  # whether to limit the gripper effort when it is blocked. -1 means no limit.
         clip_motor_torque: float = np.inf,  # clip the offset motor torque, real motor torque can still still be larger than this setting depending on the motor onboard PID loop
-        gripper_type: GripperType = GripperType.CRANK_4310,
+        gripper_type: GripperType = GripperType.LINEAR_4310,
         temp_record_flag: bool = False,  # whether record the motor's temperature
         enable_gripper_calibration: bool = False,  # whether to auto-detect gripper limits
         zero_gravity_mode: bool = True,
@@ -536,7 +536,7 @@ if __name__ == "__main__":
     override_log_level(level=logging.INFO)
 
     args = argparse.ArgumentParser()
-    args.add_argument("--gripper_type", type=str, default="crank_4310")
+    args.add_argument("--gripper_type", type=str, default="linear_4310")
     args.add_argument("--channel", type=str, default="can0")
     args.add_argument("--operation_mode", type=str, default="gravity_comp")
 

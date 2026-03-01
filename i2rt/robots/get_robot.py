@@ -13,7 +13,8 @@ from i2rt.motor_drivers.dm_driver import (
     ReceiveMode,
 )
 from i2rt.robots.motor_chain_robot import MotorChainRobot
-from i2rt.robots.utils import GripperType, ArmType, combine_arm_and_gripper_xml
+from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
+
 
 def get_encoder_chain(can_interface: CanInterface) -> EncoderChain:
     passive_encoder_reader = PassiveEncoderReader(can_interface)
@@ -23,10 +24,10 @@ def get_encoder_chain(can_interface: CanInterface) -> EncoderChain:
 def get_yam_robot(
     channel: str = "can0",
     arm_type: ArmType = ArmType.YAM,
-    gripper_type: GripperType = GripperType.CRANK_4310,
+    gripper_type: GripperType = GripperType.LINEAR_4310,
     zero_gravity_mode: bool = True,
-    ee_mass: Optional[float] = None, # scalar
-    ee_inertia: Optional[np.ndarray] = None, # 10-dim array: ipos(3) + quat(4) + diaginertia(3) or full inertia(6)
+    ee_mass: Optional[float] = None,  # scalar
+    ee_inertia: Optional[np.ndarray] = None,  # 10-dim array: ipos(3) + quat(4) + diaginertia(3) or full inertia(6)
     sim: bool = False,
 ) -> "MotorChainRobot":
     with_gripper = True
@@ -151,7 +152,6 @@ def get_yam_robot(
         )
     else:
         return get_robot()
-    
 
 
 if __name__ == "__main__":
@@ -162,13 +162,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Initialize a YAM robot")
     parser.add_argument("--arm", type=str, default="yam", choices=arm_choices, help="Arm type")
-    parser.add_argument("--gripper", type=str, default="crank_4310", choices=gripper_choices, help="Gripper type")
+    parser.add_argument("--gripper", type=str, default="linear_4310", choices=gripper_choices, help="Gripper type")
     parser.add_argument("--sim", action="store_true", help="Use sim mode instead of real hardware")
     parser.add_argument("--channel", type=str, default="can0", help="CAN channel (default: can0)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    
+
     arm = args.arm
     gripper = args.gripper
     sim = args.sim
@@ -184,7 +184,7 @@ if __name__ == "__main__":
         sim=sim,
     )
     print(f"Robot initialized: arm={arm}, gripper={gripper}, sim={sim}, channel={channel}")
-    
+
     while True:
         print(robot.get_observations())
         time.sleep(1)
