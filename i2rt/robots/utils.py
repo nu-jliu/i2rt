@@ -292,7 +292,7 @@ class GripperType(enum.Enum):
                 1.0,
                 partial(
                     zero_linkage_crank_gripper_force_torque_map,
-                    motor_reading_to_crank_angle=lambda x: (-x + 0.174),
+                    motor_reading_to_crank_angle=lambda x: -x + 0.174,
                     gripper_close_angle=8 / 180.0 * np.pi,
                     gripper_open_angle=170 / 180.0 * np.pi,
                     gripper_stroke=0.071,  # unit in meter

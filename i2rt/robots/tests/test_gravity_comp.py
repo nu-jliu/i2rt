@@ -67,9 +67,9 @@ def test_gravity_comp_at_zero_config(arm: ArmType, gripper: GripperType) -> None
     zeros = np.zeros(n_arm)
     torques = kdl.compute_inverse_dynamics(q, zeros, zeros)
 
-    assert np.all(
-        np.isfinite(torques)
-    ), f"Non-finite torques at zero config (arm={arm.value}, gripper={gripper.value}): {torques}"
+    assert np.all(np.isfinite(torques)), (
+        f"Non-finite torques at zero config (arm={arm.value}, gripper={gripper.value}): {torques}"
+    )
     max_abs = np.max(np.abs(torques))
     assert max_abs < MAX_TORQUE, (
         f"Zero-config gravity torque {max_abs:.2f} Nm exceeds {MAX_TORQUE} Nm "

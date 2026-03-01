@@ -102,7 +102,7 @@ def test_combined_xml_preserves_dofs(arm: ArmType, gripper: GripperType) -> None
     # So combined = arm_joints - 1 (arm's joint6 removed) + gripper_joints.
     expected = arm_joints - 1 + gripper_joints
     assert combined_joints == expected, (
-        f"Expected {expected} joints (arm={arm_joints} - 1 + gripper={gripper_joints}), " f"got {combined_joints}"
+        f"Expected {expected} joints (arm={arm_joints} - 1 + gripper={gripper_joints}), got {combined_joints}"
     )
 
 
@@ -130,7 +130,7 @@ def test_combined_xml_preserves_link_properties(arm: ArmType, gripper: GripperTy
             continue
         assert name in combined_inertials, f"Body '{name}' missing from combined XML"
         assert combined_inertials[name] == arm_val, (
-            f"Inertial mismatch for body '{name}': " f"arm={arm_val}, combined={combined_inertials[name]}"
+            f"Inertial mismatch for body '{name}': arm={arm_val}, combined={combined_inertials[name]}"
         )
 
     # link_6: should match gripper's definition (if gripper defines one)
@@ -140,12 +140,11 @@ def test_combined_xml_preserves_link_properties(arm: ArmType, gripper: GripperTy
             grip_val = gripper_inertials[l6_name]
             comb_val = combined_inertials[l6_name]
             assert comb_val is not None, "Combined XML link_6 inertial is None but gripper defines one"
-            assert (
-                comb_val["mass"] == grip_val["mass"]
-            ), f"link_6 mass mismatch: gripper={grip_val['mass']}, combined={comb_val['mass']}"
+            assert comb_val["mass"] == grip_val["mass"], (
+                f"link_6 mass mismatch: gripper={grip_val['mass']}, combined={comb_val['mass']}"
+            )
             assert comb_val["diaginertia"] == grip_val["diaginertia"], (
-                f"link_6 diaginertia mismatch: "
-                f"gripper={grip_val['diaginertia']}, combined={comb_val['diaginertia']}"
+                f"link_6 diaginertia mismatch: gripper={grip_val['diaginertia']}, combined={comb_val['diaginertia']}"
             )
 
 
@@ -175,9 +174,9 @@ def test_combine_xml_with_custom_ee_mass_inertia(arm: ArmType, gripper: GripperT
     assert inertial is not None, "link_6 should have an <inertial> element after override"
 
     # Check mass
-    assert float(inertial.get("mass")) == pytest.approx(
-        ee_mass
-    ), f"mass mismatch: expected {ee_mass}, got {inertial.get('mass')}"
+    assert float(inertial.get("mass")) == pytest.approx(ee_mass), (
+        f"mass mismatch: expected {ee_mass}, got {inertial.get('mass')}"
+    )
 
     # Check ipos (first 3 elements)
     ipos_vals = [float(x) for x in inertial.get("ipos").split()]

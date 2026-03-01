@@ -86,9 +86,9 @@ class MotorChainRobot(Robot):
     ) -> None:
         self.temp_record_flag = temp_record_flag
         if gripper_index is not None:
-            assert (
-                gripper_index == len(motor_chain) - 1
-            ), "Gripper index should be the last one, but got {gripper_index}"
+            assert gripper_index == len(motor_chain) - 1, (
+                "Gripper index should be the last one, but got {gripper_index}"
+            )
 
             # Auto-detect gripper limits if enabled and gripper_limits is None
             print(
@@ -175,9 +175,9 @@ class MotorChainRobot(Robot):
         # override the xml joint limits with the provided joint_limits
         if joint_limits is not None:
             joint_limits = np.array(joint_limits)
-            assert np.all(
-                joint_limits[:, 0] < joint_limits[:, 1]
-            ), "Lower joint limits must be smaller than upper limits"
+            assert np.all(joint_limits[:, 0] < joint_limits[:, 1]), (
+                "Lower joint limits must be smaller than upper limits"
+            )
             self._joint_limits = joint_limits
         self._command_lock = threading.Lock()
         self._state_lock = threading.Lock()
@@ -552,9 +552,9 @@ if __name__ == "__main__":
             # print(robot.get_observations())
             time.sleep(1)
     elif args.operation_mode == "test_gripper":
-        assert (
-            gripper_type != GripperType.YAM_TEACHING_HANDLE
-        ), "test_gripper is not supported for YAM_TEACHING_HANDLE, teaching handle is a passive device"
+        assert gripper_type != GripperType.YAM_TEACHING_HANDLE, (
+            "test_gripper is not supported for YAM_TEACHING_HANDLE, teaching handle is a passive device"
+        )
         for _ in range(30):
             for gripper_pos in [0.8, 0.0]:
                 print(f"gripper_pos: {gripper_pos}")
