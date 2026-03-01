@@ -13,7 +13,10 @@ import pytest
 from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
 from i2rt.utils.mujoco_utils import MuJoCoKDL
 
-MAX_TORQUE = 20.0  # Nm — same threshold as MotorChainRobot
+_MAX_TORQUE = {
+    ArmType.BIG_YAM: 25.0,
+}
+_DEFAULT_MAX_TORQUE = 20.0  # Nm — same threshold as MotorChainRobot
 NUM_SAMPLES = 20
 
 ALL_ARM_GRIPPER_COMBOS = [(arm, gripper) for arm in ArmType for gripper in GripperType]
@@ -49,9 +52,10 @@ def test_gravity_comp_torques_in_range(arm: ArmType, gripper: GripperType) -> No
         zeros = np.zeros(n_arm)
         torques = kdl.compute_inverse_dynamics(q, zeros, zeros)
 
+        max_torque = _MAX_TORQUE.get(arm, _DEFAULT_MAX_TORQUE)
         max_abs = np.max(np.abs(torques))
-        assert max_abs < MAX_TORQUE, (
-            f"Sample {i}: max gravity torque {max_abs:.2f} Nm exceeds {MAX_TORQUE} Nm "
+        assert max_abs < max_torque, (
+            f"Sample {i}: max gravity torque {max_abs:.2f} Nm exceeds {max_torque} Nm "
             f"(arm={arm.value}, gripper={gripper.value}, q={q}, torques={torques})"
         )
 
@@ -70,8 +74,9 @@ def test_gravity_comp_at_zero_config(arm: ArmType, gripper: GripperType) -> None
     assert np.all(np.isfinite(torques)), (
         f"Non-finite torques at zero config (arm={arm.value}, gripper={gripper.value}): {torques}"
     )
+    max_torque = _MAX_TORQUE.get(arm, _DEFAULT_MAX_TORQUE)
     max_abs = np.max(np.abs(torques))
-    assert max_abs < MAX_TORQUE, (
-        f"Zero-config gravity torque {max_abs:.2f} Nm exceeds {MAX_TORQUE} Nm "
+    assert max_abs < max_torque, (
+        f"Zero-config gravity torque {max_abs:.2f} Nm exceeds {max_torque} Nm "
         f"(arm={arm.value}, gripper={gripper.value}, torques={torques})"
     )

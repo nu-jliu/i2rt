@@ -7,10 +7,10 @@ dimension handling for all arm/gripper combinations.
 import numpy as np
 import pytest
 
-from i2rt.control.mujoco_control_interface import MujocoControlInterface
 from i2rt.robots.get_robot import get_yam_robot
 from i2rt.robots.sim_robot import SimRobot
 from i2rt.robots.utils import ArmType, GripperType
+from i2rt.utils.mujoco_control_interface import MujocoControlInterface
 
 GRIPPER_COMBOS = [
     (GripperType.CRANK_4310, "grasp_site"),

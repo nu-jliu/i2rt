@@ -4,9 +4,7 @@ Starts in gravity-comp (vis-only) mode, mirroring the robot's joint state.
 Press SPACE in the viewer to toggle mocap control mode, then double-click
 the target marker, ctrl+right-drag to translate, ctrl+left-drag to rotate.
 
-Usage:
-    python i2rt/control/mujoco_control_interface.py --sim
-    python i2rt/control/mujoco_control_interface.py --channel can0
+See examples/control_with_mujoco/ for a runnable entry-point and README.
 """
 
 import os
@@ -14,6 +12,7 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from enum import Enum, auto
+from typing import Optional
 
 import mujoco
 import mujoco.viewer
@@ -29,8 +28,21 @@ class Mode(Enum):
     CONTROL = auto()
 
 
+# Button indicator colours  (inactive → active)
+_BTN_OFF_RGBA = np.array([0.35, 0.35, 0.35, 0.7])
+_BTN_ON_RGBA = np.array([0.1, 0.9, 0.1, 1.0])
+
+# World-space positions of the two button indicator spheres (beside the robot base)
+_BTN_POSITIONS = ["0.13 0 0.06", "0.20 0 0.06"]
+_BTN_NAMES = ["btn_top_geom", "btn_grip_geom"]
+
+
 class MujocoControlInterface:
-    """MuJoCo viewer with gravity-comp visualisation and mocap IK control."""
+    """MuJoCo viewer with gravity-comp visualisation and mocap IK control.
+
+    For robots with a teaching handle, two small spheres are rendered near the
+    base showing the live state of the two handle buttons (green = pressed).
+    """
 
     MOCAP_BODY_NAME = "mocap_target"
     _VIS_RGBA = np.array([0.2, 0.8, 0.2, 0.3])
@@ -54,17 +66,18 @@ class MujocoControlInterface:
 
         self._nq = self._model.nq
         self._n_arm = sum(1 for j in range(self._model.njnt) if self._model.jnt_type[j] == mujoco.mjtJoint.mjJNT_HINGE)
-        self._ee_site_id = mujoco.mj_name2id(
-            self._model,
-            mujoco.mjtObj.mjOBJ_SITE,
-            ee_site,
-        )
+
+        # Validate ee_site
+        self._ee_site_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_SITE, ee_site)
+        if self._ee_site_id == -1:
+            available = [mujoco.mj_id2name(self._model, mujoco.mjtObj.mjOBJ_SITE, i) for i in range(self._model.nsite)]
+            raise ValueError(f"Site {ee_site!r} not found in model. Available: {available}")
+
         self._mocap_id = self._model.body(self.MOCAP_BODY_NAME).mocapid[0]
-        self._mocap_geom_id = mujoco.mj_name2id(
-            self._model,
-            mujoco.mjtObj.mjOBJ_GEOM,
-            "mocap_target_geom",
-        )
+        self._mocap_geom_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, "mocap_target_geom")
+
+        # Button indicator geom IDs (valid for all models — geoms always injected)
+        self._btn_geom_ids = [mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in _BTN_NAMES]
 
     @classmethod
     def from_robot(
@@ -79,16 +92,16 @@ class MujocoControlInterface:
 
     @classmethod
     def _build_model(cls, xml_path: str) -> mujoco.MjModel:
-        """Load robot XML and inject a mocap target body."""
+        """Load robot XML and inject mocap target + button indicator geoms."""
         tree = ET.parse(xml_path)
         root = tree.getroot()
         worldbody = root.find("worldbody")
 
+        # Mocap target marker
         mocap = ET.SubElement(worldbody, "body")
         mocap.set("name", cls.MOCAP_BODY_NAME)
         mocap.set("mocap", "true")
         mocap.set("pos", "0 0 0.3")
-
         geom = ET.SubElement(mocap, "geom")
         geom.set("name", "mocap_target_geom")
         geom.set("type", "sphere")
@@ -96,6 +109,17 @@ class MujocoControlInterface:
         geom.set("rgba", " ".join(f"{v:.2f}" for v in cls._VIS_RGBA))
         geom.set("contype", "0")
         geom.set("conaffinity", "0")
+
+        # Button indicator spheres (teaching handle state visualisation)
+        for name, pos in zip(_BTN_NAMES, _BTN_POSITIONS, strict=False):
+            btn = ET.SubElement(worldbody, "geom")
+            btn.set("name", name)
+            btn.set("type", "sphere")
+            btn.set("size", "0.022")
+            btn.set("pos", pos)
+            btn.set("rgba", " ".join(f"{v:.2f}" for v in _BTN_OFF_RGBA))
+            btn.set("contype", "0")
+            btn.set("conaffinity", "0")
 
         dir_path = os.path.dirname(os.path.abspath(xml_path))
         fd, tmp_path = tempfile.mkstemp(suffix=".xml", dir=dir_path)
@@ -141,7 +165,7 @@ class MujocoControlInterface:
         mujoco.mj_forward(self._model, self._data)
 
     def _denormalize_slide_joints(self, n_set: int) -> None:
-        """Scale normalized [0,1] slide joint values to physical range (meters)."""
+        """Scale normalized [0,1] slide joint values to physical range (metres)."""
         for j in range(self._model.njnt):
             adr = self._model.jnt_qposadr[j]
             if adr >= n_set:
@@ -163,6 +187,27 @@ class MujocoControlInterface:
 
     def _set_marker_color(self, rgba: np.ndarray) -> None:
         self._model.geom_rgba[self._mocap_geom_id] = rgba
+
+    def _get_button_states(self) -> Optional[list[bool]]:
+        """Read teaching-handle button states from real hardware, or None if unavailable."""
+        if not isinstance(self._robot, MotorChainRobot):
+            return None
+        chain = self._robot.motor_chain
+        if not hasattr(chain, "get_same_bus_device_states"):
+            return None
+        states = chain.get_same_bus_device_states()
+        if not states:
+            return None
+        return list(states[0].io_inputs)  # [button_top, button_grip]
+
+    def _update_button_indicators(self) -> None:
+        """Refresh button indicator sphere colours from live hardware state."""
+        buttons = self._get_button_states()
+        for idx, geom_id in enumerate(self._btn_geom_ids):
+            if geom_id == -1:
+                continue
+            pressed = bool(buttons[idx]) if (buttons and idx < len(buttons)) else False
+            self._model.geom_rgba[geom_id] = _BTN_ON_RGBA if pressed else _BTN_OFF_RGBA
 
     # ---- key callback ---------------------------------------------------------
 
@@ -195,23 +240,18 @@ class MujocoControlInterface:
             self._model,
             self._data,
             key_callback=self._on_key,
-            show_left_ui=False,
-            show_right_ui=False,
         ) as viewer:
             try:
                 while viewer.is_running():
                     self._mirror_robot()
+                    self._update_button_indicators()
 
                     if self._mode is Mode.VIS:
                         self._sync_mocap_to_ee()
                     else:
                         target = self._mocap_pose_4x4()
                         init_q = self._data.qpos[: self._nq].copy()
-                        ok, ik_q = self._kin.ik(
-                            target,
-                            self._ee_site,
-                            init_q=init_q,
-                        )
+                        ok, ik_q = self._kin.ik(target, self._ee_site, init_q=init_q)
                         if ok:
                             cmd = self._robot.get_joint_pos().copy()
                             cmd[: self._n_arm] = ik_q[: self._n_arm]
@@ -223,40 +263,3 @@ class MujocoControlInterface:
                 pass
 
         print("[control] Viewer closed")
-
-
-if __name__ == "__main__":
-    import argparse
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-    from i2rt.robots.get_robot import get_yam_robot
-    from i2rt.robots.utils import ArmType, GripperType
-
-    arm_choices = [a.value for a in ArmType]
-    gripper_choices = [g.value for g in GripperType]
-
-    parser = argparse.ArgumentParser(
-        description="MuJoCo control interface for i2rt robots",
-    )
-    parser.add_argument("--arm", type=str, default="yam", choices=arm_choices)
-    parser.add_argument("--gripper", type=str, default="linear_4310", choices=gripper_choices)
-    parser.add_argument("--channel", type=str, default="can0", help="CAN channel")
-    parser.add_argument("--sim", action="store_true", help="Use SimRobot")
-    parser.add_argument("--dt", type=float, default=0.02, help="Loop timestep (s)")
-    parser.add_argument("--site", type=str, default="grasp_site", help="EE site name")
-    args = parser.parse_args()
-
-    arm = ArmType.from_string_name(args.arm)
-    gripper = GripperType.from_string_name(args.gripper)
-    robot = get_yam_robot(
-        channel=args.channel,
-        arm_type=arm,
-        gripper_type=gripper,
-        sim=args.sim,
-    )
-
-    iface = MujocoControlInterface.from_robot(robot, ee_site=args.site, dt=args.dt)
-    iface.run()

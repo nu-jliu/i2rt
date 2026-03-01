@@ -132,6 +132,7 @@ Full setup, remote layout, API reference, and linear rail docs: [`docs/products/
 | Bimanual lead-follower | `examples/bimanual_lead_follower/` | [`docs/examples/bimanual-teleoperation.md`](./docs/examples/bimanual-teleoperation.md) |
 | Record & replay trajectory | `examples/record_replay_trajectory/` | [`docs/examples/record-replay.md`](./docs/examples/record-replay.md) |
 | Single motor PD control | `examples/single_motor_position_pd_control/` | [`docs/examples/motor-control.md`](./docs/examples/motor-control.md) |
+| MuJoCo control interface | `examples/control_with_mujoco/` | [`docs/examples/control-with-mujoco.md`](./docs/examples/control-with-mujoco.md) |
 
 ## Advanced: Motor Configuration
 
