@@ -53,6 +53,7 @@ class MujocoControlInterface:
         self._kin = Kinematics(xml_path, ee_site)
 
         self._nq = self._model.nq
+        self._n_arm = sum(1 for j in range(self._model.njnt) if self._model.jnt_type[j] == mujoco.mjtJoint.mjJNT_HINGE)
         self._ee_site_id = mujoco.mj_name2id(
             self._model,
             mujoco.mjtObj.mjOBJ_SITE,
@@ -135,7 +136,30 @@ class MujocoControlInterface:
         qpos = self._robot.get_joint_pos()
         n = min(len(qpos), self._nq)
         self._data.qpos[:n] = qpos[:n]
+        self._denormalize_slide_joints(n)
+        self._enforce_eq_constraints()
         mujoco.mj_forward(self._model, self._data)
+
+    def _denormalize_slide_joints(self, n_set: int) -> None:
+        """Scale normalized [0,1] slide joint values to physical range (meters)."""
+        for j in range(self._model.njnt):
+            adr = self._model.jnt_qposadr[j]
+            if adr >= n_set:
+                continue
+            if self._model.jnt_type[j] == mujoco.mjtJoint.mjJNT_SLIDE:
+                lo, hi = self._model.jnt_range[j]
+                self._data.qpos[adr] = lo + self._data.qpos[adr] * (hi - lo)
+
+    def _enforce_eq_constraints(self) -> None:
+        """Project qpos to satisfy joint equality constraints (e.g. coupled fingers)."""
+        for i in range(self._model.neq):
+            if self._model.eq_type[i] != mujoco.mjtEq.mjEQ_JOINT:
+                continue
+            adr1 = self._model.jnt_qposadr[self._model.eq_obj1id[i]]
+            adr2 = self._model.jnt_qposadr[self._model.eq_obj2id[i]]
+            coef = self._model.eq_data[i, :5]
+            q1 = self._data.qpos[adr1]
+            self._data.qpos[adr2] = np.polyval(coef[::-1], q1)
 
     def _set_marker_color(self, rgba: np.ndarray) -> None:
         self._model.geom_rgba[self._mocap_geom_id] = rgba
@@ -182,16 +206,16 @@ class MujocoControlInterface:
                         self._sync_mocap_to_ee()
                     else:
                         target = self._mocap_pose_4x4()
-                        arm_q = self._robot.get_joint_pos()[: self._nq]
+                        init_q = self._data.qpos[: self._nq].copy()
                         ok, ik_q = self._kin.ik(
                             target,
                             self._ee_site,
-                            init_q=arm_q,
+                            init_q=init_q,
                         )
                         if ok:
-                            full_q = self._robot.get_joint_pos().copy()
-                            full_q[: self._nq] = ik_q[: self._nq]
-                            self._robot.command_joint_pos(full_q)
+                            cmd = self._robot.get_joint_pos().copy()
+                            cmd[: self._n_arm] = ik_q[: self._n_arm]
+                            self._robot.command_joint_pos(cmd)
 
                     viewer.sync()
                     time.sleep(self._dt)

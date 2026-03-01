@@ -49,8 +49,8 @@ lint.select = [
     "RUF"  # Ruff rules.
 ]
 lint.ignore = [
-    "ANN101",
-    "ANN102",
+    "ANN101",  # Missing type annotation for `self` in method
+    "ANN102",  # Missing type annotation for `cls` in classmethod
     "ANN204",
     "ANN401",
     "E741", # Ambiguous variable name. (l, O, or I)
@@ -62,6 +62,7 @@ lint.ignore = [
     "PLR0915",  # Too many statements.
     "PLR0913",  # Too many arguments.
     "PLC0414",  # Import alias does not rename variable. (this is used for exporting names)
+    "PLC0415",  # Import not at top level (conditional and __main__ imports are standard).
     "PLC1901",  # Use falsey strings.
     "PLR0911",  # Too many return statements.
     "PLR0912",  # Too many branches.

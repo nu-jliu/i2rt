@@ -123,6 +123,18 @@ def combine_arm_and_gripper_xml(
                 if replaced:
                     break
 
+        # merge optional top-level sections (equality, contact) from gripper
+        if grip_root is not None:
+            for section_tag in ("equality", "contact"):
+                grip_section = grip_root.find(section_tag)
+                if grip_section is None:
+                    continue
+                arm_section = arm_root.find(section_tag)
+                if arm_section is None:
+                    arm_section = ET.SubElement(arm_root, section_tag)
+                for child in grip_section:
+                    arm_section.append(deepcopy(child))
+
     # find resulting link_6 and apply end-effector overrides (mass/inertia)
     if ee_mass is not None or ee_inertia is not None:
         res_body = arm_root.find(".//body[@name='link_6']")

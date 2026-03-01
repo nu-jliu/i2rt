@@ -2,7 +2,7 @@
   <compiler angle="radian"/>
 
   <worldbody>
-    <body name="link_6" pos="0 0.0353 0.0395" quat="1 -1 0 0">
+    <body name="link_6" pos="0.00358881 -0.03891574 0.04880005" quat="-9.381869e-07 -4.890237e-06 -0.7071064 0.7071072">
       <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9"/>
       <joint name="joint6" pos="0 0 0" axis="0 0 1" range="-2.0944 2.0944" actuatorfrcrange="-10 10"/>
       <site name="tcp_site" pos="0 0 0" quat="1 0 0 -1" size="0.005" rgba="1 0 0 1"/>
