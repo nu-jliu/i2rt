@@ -49,8 +49,6 @@ lint.select = [
     "RUF"  # Ruff rules.
 ]
 lint.ignore = [
-    "ANN101",  # Missing type annotation for `self` in method
-    "ANN102",  # Missing type annotation for `cls` in classmethod
     "ANN204",
     "ANN401",
     "E741", # Ambiguous variable name. (l, O, or I)

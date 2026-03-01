@@ -37,7 +37,7 @@ def _make_iface(gripper: GripperType, site: str) -> tuple[SimRobot, MujocoContro
 @pytest.mark.parametrize("gripper,site", GRIPPER_COMBOS, ids=_combo_id)
 def test_vis_mode_mirror(gripper: GripperType, site: str) -> None:
     """VIS mode: mirror_robot should set qpos and forward without error."""
-    robot, iface = _make_iface(gripper, site)
+    _robot, iface = _make_iface(gripper, site)
     iface._mirror_robot()
     iface._sync_mocap_to_ee()
 
@@ -64,7 +64,7 @@ def test_control_mode_ik_dimensions(gripper: GripperType, site: str) -> None:
 
     target = iface._mocap_pose_4x4()
     init_q = iface._data.qpos[: iface._nq].copy()
-    ok, ik_q = iface._kin.ik(target, site, init_q=init_q, max_iters=10)
+    _ok, ik_q = iface._kin.ik(target, site, init_q=init_q, max_iters=10)
 
     assert ik_q.shape[0] == iface._nq
     cmd = robot.get_joint_pos().copy()
@@ -91,7 +91,7 @@ def test_control_mode_preserves_gripper(gripper: GripperType, site: str) -> None
 
     target = iface._mocap_pose_4x4()
     init_q = iface._data.qpos[: iface._nq].copy()
-    ok, ik_q = iface._kin.ik(target, site, init_q=init_q, max_iters=10)
+    _ok, ik_q = iface._kin.ik(target, site, init_q=init_q, max_iters=10)
 
     cmd = robot.get_joint_pos().copy()
     cmd[: iface._n_arm] = ik_q[: iface._n_arm]
