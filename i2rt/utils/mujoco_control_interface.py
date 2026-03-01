@@ -60,7 +60,8 @@ class MujocoControlInterface:
         self._dt = dt
         self._mode = Mode.VIS
 
-        self._model = self._build_model(xml_path)
+        with_buttons = self._has_teaching_handle(robot)
+        self._model = self._build_model(xml_path, with_button_indicators=with_buttons)
         self._data = mujoco.MjData(self._model)
         self._kin = Kinematics(xml_path, ee_site)
 
@@ -76,8 +77,13 @@ class MujocoControlInterface:
         self._mocap_id = self._model.body(self.MOCAP_BODY_NAME).mocapid[0]
         self._mocap_geom_id = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, "mocap_target_geom")
 
-        # Button indicator geom IDs (valid for all models — geoms always injected)
-        self._btn_geom_ids = [mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in _BTN_NAMES]
+        # Button indicator geom IDs — only populated when teaching handle is present
+        if with_buttons:
+            self._btn_geom_ids = [
+                mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_GEOM, name) for name in _BTN_NAMES
+            ]
+        else:
+            self._btn_geom_ids = []
 
     @classmethod
     def from_robot(
@@ -90,9 +96,21 @@ class MujocoControlInterface:
 
     # ---- model construction ---------------------------------------------------
 
+    @staticmethod
+    def _has_teaching_handle(robot: Robot) -> bool:
+        """Return True if robot has a teaching handle (needs button indicators)."""
+        if not isinstance(robot, MotorChainRobot):
+            return False
+        chain = robot.motor_chain
+        return (
+            hasattr(chain, "get_same_bus_device_states")
+            and hasattr(chain, "same_bus_device_driver")
+            and chain.same_bus_device_driver is not None
+        )
+
     @classmethod
-    def _build_model(cls, xml_path: str) -> mujoco.MjModel:
-        """Load robot XML and inject mocap target + button indicator geoms."""
+    def _build_model(cls, xml_path: str, with_button_indicators: bool = False) -> mujoco.MjModel:
+        """Load robot XML and inject mocap target + optionally button indicator geoms."""
         tree = ET.parse(xml_path)
         root = tree.getroot()
         worldbody = root.find("worldbody")
@@ -110,16 +128,17 @@ class MujocoControlInterface:
         geom.set("contype", "0")
         geom.set("conaffinity", "0")
 
-        # Button indicator spheres (teaching handle state visualisation)
-        for name, pos in zip(_BTN_NAMES, _BTN_POSITIONS, strict=False):
-            btn = ET.SubElement(worldbody, "geom")
-            btn.set("name", name)
-            btn.set("type", "sphere")
-            btn.set("size", "0.022")
-            btn.set("pos", pos)
-            btn.set("rgba", " ".join(f"{v:.2f}" for v in _BTN_OFF_RGBA))
-            btn.set("contype", "0")
-            btn.set("conaffinity", "0")
+        # Button indicator spheres — only for teaching handle
+        if with_button_indicators:
+            for name, pos in zip(_BTN_NAMES, _BTN_POSITIONS, strict=False):
+                btn = ET.SubElement(worldbody, "geom")
+                btn.set("name", name)
+                btn.set("type", "sphere")
+                btn.set("size", "0.022")
+                btn.set("pos", pos)
+                btn.set("rgba", " ".join(f"{v:.2f}" for v in _BTN_OFF_RGBA))
+                btn.set("contype", "0")
+                btn.set("conaffinity", "0")
 
         dir_path = os.path.dirname(os.path.abspath(xml_path))
         fd, tmp_path = tempfile.mkstemp(suffix=".xml", dir=dir_path)
