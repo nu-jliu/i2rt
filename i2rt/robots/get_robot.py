@@ -2,7 +2,7 @@ import logging
 import time
 from dataclasses import dataclass
 from functools import partial
-from typing import Optional
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -107,6 +107,8 @@ def get_yam_robot(
     ee_mass: Optional[float] = None,
     ee_inertia: Optional[np.ndarray] = None,
     sim: bool = False,
+    joint_state_saver_factory: Optional[Callable[[], Any]] = None,
+    set_realtime_and_pin_callback: Optional[Callable[[int], None]] = None,
 ) -> "MotorChainRobot":
     """Create a YAM-family robot (real or sim).
 
@@ -212,6 +214,8 @@ def get_yam_robot(
         kp=kp,
         kd=kd,
         zero_gravity_mode=zero_gravity_mode,
+        joint_state_saver_factory=joint_state_saver_factory,
+        set_realtime_and_pin_callback=set_realtime_and_pin_callback,
     )
 
     if with_gripper:
