@@ -33,10 +33,10 @@
               <inertial pos="-4.72877e-05 -0.00118652 -0.0426116" quat="0.706401 -0.0368625 0.0458386 0.705363" mass="0.382514" diaginertia="0.000149214 9.5343e-05 8.35947e-05"/>
               <joint name="joint5" pos="0 0 0" axis="0 0 1" range="-1.5708 1.5708" actuatorfrcrange="-10 10"/>
               <geom type="mesh" rgba="0.752941 0.752941 0.752941 1" mesh="joint6_link"/>
-              <!-- Adapter: positions and orients the linear_4310 gripper mounting frame
-                   relative to joint6_link. 180-deg rotation around Z flips gripper
-                   from pointing backwards (-Y) to pointing forwards (+Y). -->
-              <body name="gripper_adapter" pos="0 -0.0085 -0.086" quat="0 0 0 1">
+              <!-- Adapter: positions and orients the gripper mounting frame relative to
+                   joint6_link. 180-deg rotation around X keeps gripper pointing +Y
+                   (forwards) and right-side up. -->
+              <body name="gripper_adapter" pos="0 -0.0085 -0.006" quat="0 1 0 0">
                 <inertial pos="0 0 0" mass="1e-9" diaginertia="1e-9 1e-9 1e-9"/>
                 <!-- link_6 is replaced at runtime by combine_arm_and_gripper_xml() -->
                 <body name="link_6" pos="2.39858e-07 -0.0419481 0.0404996" quat="0.499998 -0.5 -0.5 -0.500002">
