@@ -5,8 +5,6 @@ import mink
 import mujoco
 import numpy as np
 
-from i2rt.robots.utils import YAM_XML_PATH
-
 
 class Kinematics:
     def __init__(self, xml_path: str, site_name: Optional[str]):

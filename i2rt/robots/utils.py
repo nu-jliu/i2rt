@@ -23,12 +23,19 @@ ARM_ARX_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/arx/arx.xml")
 GRIPPER_CRANK_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/crank_4310/crank_4310.xml")
 GRIPPER_LINEAR_3507_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_3507/linear_3507.xml")
 GRIPPER_LINEAR_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_4310/linear_4310.xml")
-GRIPPER_TEACHING_HANDLE_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/yam_teaching_handle/yam_teaching_handle.xml")
+GRIPPER_TEACHING_HANDLE_PATH = os.path.join(
+    I2RT_ROOT, "robot_models/gripper/yam_teaching_handle/yam_teaching_handle.xml"
+)
 GRIPPER_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/no_gripper/no_gripper.xml")
 GRIPPER_ARX_DEFAULT_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/arx_default/arx_default.xml")
 
 
-def combine_arm_and_gripper_xml(arm_path, gripper_path, ee_mass=None, ee_inertia=None) -> str:
+def combine_arm_and_gripper_xml(
+    arm_path: str,
+    gripper_path: str,
+    ee_mass: Optional[float] = None,
+    ee_inertia: Optional[np.ndarray] = None,
+) -> str:
     """Combine arm and gripper XML files into a single XML string.
 
     Replaces the <body name="link_6"> subtree in the arm XML with the one from the
@@ -158,20 +165,12 @@ class ArmType(enum.Enum):
             raise ValueError(
                 f"Unknown arm type: {name}, arm has to be one of the following: {ArmType.available_arms()}"
             )
-        
+
     def get_xml_path(self) -> str:
         if self == ArmType.ARX:
             return ARM_ARX_XML_PATH
         elif self == ArmType.YAM:
             return ARM_YAM_XML_PATH
-        else:
-            raise ValueError(f"Unknown arm type: {self}")
-
-    def get_urdf_xacro_path(self) -> str:
-        if self == ArmType.YAM:
-            return ARM_YAM_URDF_XACRO_PATH
-        elif self == ArmType.ARX:
-            return ARM_ARX_URDF_XACRO_PATH
         else:
             raise ValueError(f"Unknown arm type: {self}")
 
@@ -248,8 +247,8 @@ class GripperType(enum.Enum):
             return 20, 0.5
         elif self in [GripperType.LINEAR_3507]:
             return 10, 0.3
-        elif self == GripperType.YAM_TEACHING_HANDLE:
-            return -1.0, -1.0  # no kp or kd for teaching handle
+        elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER]:
+            return -1.0, -1.0
         elif self == GripperType.ARX_DEFAULT:
             raise NotImplementedError("ARX_DEFAULT gripper motor kp/kd not yet defined")
         else:
@@ -260,8 +259,8 @@ class GripperType(enum.Enum):
             return "DM4310"
         elif self in [GripperType.LINEAR_3507]:
             return "DM3507"
-        elif self == GripperType.YAM_TEACHING_HANDLE:
-            return ""  # or raise NotImplementedError
+        elif self in [GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER]:
+            return ""
         elif self == GripperType.ARX_DEFAULT:
             raise NotImplementedError("ARX_DEFAULT gripper motor type not yet defined")
         else:

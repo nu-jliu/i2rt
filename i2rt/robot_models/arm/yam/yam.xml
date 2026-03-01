@@ -33,7 +33,7 @@
               <joint name="joint5" pos="0 0 0" axis="0 0 1" range="-1.5708 1.5708" actuatorfrcrange="-10 10"/>
               <geom pos="3.64861e-05 0.00025665 0.0353526" quat="9.38184e-07 -0.707105 -0.707108 9.38187e-07" type="mesh" rgba="1 0.6 0 1" mesh="link_5_collision"/>
               <body name="link_6" pos="0 0.0353 0.0395" quat="1 -1 0 0">
-                <inertial pos="0 0 0.05" mass="0.3" diaginertia="0.001 0.001 0.001"/>
+                <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9"/>
                 <joint name="joint6" pos="0 0 0" axis="0 0 1" range="-2.0944 2.0944" actuatorfrcrange="-10 10"/>
                 <site name="tcp_site" pos="0 0 0" quat="1 0 0 -1" size="0.005" rgba="1 0 0 1"/>
                 <site name="grasp_site" pos="0 0 0.1347" quat="1 0 0 -1" size="0.005" rgba="0 1 0 1"/>
