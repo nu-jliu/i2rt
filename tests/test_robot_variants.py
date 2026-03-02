@@ -4,12 +4,13 @@ Run with:
     pytest tests/test_robot_variants.py -v
 """
 
+import mujoco
 import numpy as np
 import pytest
 
 from i2rt.robots.get_robot import _ARM_JOINT_LIMITS, get_yam_robot
 from i2rt.robots.motor_chain_robot import MotorChainRobot
-from i2rt.robots.utils import ArmType, GripperType
+from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
 
 # All YAM-family arm variants
 YAM_ARMS = [
@@ -142,12 +143,77 @@ def test_big_yam_no_gripper_is_arm_only() -> None:
 @pytest.mark.parametrize("gripper_type", YAM_GRIPPERS)
 def test_combined_xml_loads_in_mujoco(arm_type: ArmType, gripper_type: GripperType) -> None:
     """The combined arm+gripper XML must be loadable by MuJoCo."""
-    import mujoco
-
-    from i2rt.robots.utils import combine_arm_and_gripper_xml
-
     xml_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
     model = mujoco.MjModel.from_xml_path(xml_path)
 
     assert model.nq > 0
     assert model.njnt > 0
+
+
+# ---------------------------------------------------------------------------
+# EE site frame convention at zero pose
+# ---------------------------------------------------------------------------
+
+
+def _get_ee_site_axes(arm_type: ArmType, gripper_type: GripperType) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Load combined model at qpos=0 and return grasp_site (x, y, z) world axes."""
+    xml_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
+    model = mujoco.MjModel.from_xml_path(xml_path)
+    data = mujoco.MjData(model)
+    data.qpos[:] = 0
+    mujoco.mj_forward(model, data)
+
+    # Prefer grasp_site; fall back to tcp_site (teaching handle has no grasp_site)
+    site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site")
+    if site_id < 0:
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "tcp_site")
+    assert site_id >= 0, f"No grasp_site or tcp_site in {arm_type.value}+{gripper_type.value}"
+
+    xmat = data.site_xmat[site_id].reshape(3, 3)
+    return xmat[:, 0], xmat[:, 1], xmat[:, 2]
+
+
+@pytest.mark.parametrize("arm_type", YAM_ARMS)
+@pytest.mark.parametrize("gripper_type", YAM_GRIPPERS)
+def test_grasp_site_frame_at_zero_pose(arm_type: ArmType, gripper_type: GripperType) -> None:
+    """At qpos=0 the EE site frame must be: X down, Y left, Z front.
+
+    Concretely:
+      - X axis ≈ world [0, 0, -1]  (pointing down)
+      - Y axis is horizontal        (z-component ≈ 0)
+      - Z axis is horizontal        (z-component ≈ 0, pointing front)
+    """
+    x_axis, y_axis, z_axis = _get_ee_site_axes(arm_type, gripper_type)
+    label = f"{arm_type.value}+{gripper_type.value}"
+
+    # X should point down (world -Z)
+    np.testing.assert_allclose(
+        x_axis,
+        [0, 0, -1],
+        atol=1e-3,
+        err_msg=f"{label}: X axis should point down [0,0,-1], got {x_axis}",
+    )
+    # Z (front) should be horizontal
+    assert abs(z_axis[2]) < 1e-3, f"{label}: Z axis should be horizontal (front), z-component={z_axis[2]:.6f}"
+    # Y (left) should be horizontal
+    assert abs(y_axis[2]) < 1e-3, f"{label}: Y axis should be horizontal (left), z-component={y_axis[2]:.6f}"
+
+
+@pytest.mark.parametrize("arm_type", YAM_ARMS)
+def test_grasp_site_consistent_across_grippers(arm_type: ArmType) -> None:
+    """All grippers on the same arm must produce the same EE site orientation at zero pose."""
+    reference = None
+    ref_gripper = None
+    for gripper_type in YAM_GRIPPERS:
+        x, y, z = _get_ee_site_axes(arm_type, gripper_type)
+        axes = np.column_stack([x, y, z])
+        if reference is None:
+            reference = axes
+            ref_gripper = gripper_type
+        else:
+            np.testing.assert_allclose(
+                axes,
+                reference,
+                atol=1e-3,
+                err_msg=(f"{arm_type.value}: {gripper_type.value} site frame differs from {ref_gripper.value}"),
+            )
