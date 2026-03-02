@@ -60,7 +60,8 @@ class MujocoControlInterface:
         self._dt = dt
         self._mode = Mode.VIS
 
-        with_buttons = self._has_teaching_handle(robot)
+        # tcp_site is exclusive to the teaching handle; works for both sim and real hardware
+        with_buttons = ee_site == "tcp_site" or self._has_teaching_handle(robot)
         self._model = self._build_model(xml_path, with_button_indicators=with_buttons)
         self._data = mujoco.MjData(self._model)
         self._kin = Kinematics(xml_path, ee_site)
