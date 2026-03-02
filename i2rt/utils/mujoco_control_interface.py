@@ -261,6 +261,7 @@ class MujocoControlInterface:
             self._data,
             key_callback=self._on_key,
         ) as viewer:
+            viewer.opt.frame = mujoco.mjtFrame.mjFRAME_SITE
             try:
                 while viewer.is_running():
                     self._mirror_robot()
