@@ -558,9 +558,11 @@ class MotorChainRobot(Robot):
             else:
                 result = {
                     "joint_pos": self._joint_state.pos[: self._gripper_index],
+                    "joint_vel": self._joint_state.vel[: self._gripper_index],
+                    "joint_eff": self._joint_state.eff[: self._gripper_index],
                     "gripper_pos": np.array([self._joint_state.pos[self._gripper_index]]),
-                    "joint_vel": self._joint_state.vel,
-                    "joint_eff": self._joint_state.eff,
+                    "gripper_vel": np.array([self._joint_state.vel[self._gripper_index]]),
+                    "gripper_eff": np.array([self._joint_state.eff[self._gripper_index]]),
                 }
             if self.temp_record_flag:
                 result["temp_mos"] = self._joint_state.temp_mos

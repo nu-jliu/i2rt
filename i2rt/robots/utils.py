@@ -1,7 +1,6 @@
 import enum
 import logging
 import os
-import queue
 import tempfile
 import time
 import xml.etree.ElementTree as ET
@@ -407,6 +406,35 @@ def zero_linkage_crank_gripper_force_torque_map(
     return target_torque
 
 
+class LockFreeCircularBuffer:
+    """
+    Lock-free circular buffer.
+    There is a ~microsecond level race condition for this, but we're only using it to tell if the gripper is clogged or not.
+    So 1 stale reading out of 1000 is not a big deal (FOR THAT PARTICULAR USE CASE!!!).
+    """
+
+    def __init__(self, maxsize: int = 1000):
+        self.maxsize = maxsize
+        self.timestamps = np.zeros(maxsize)
+        self.values = np.zeros(maxsize)
+        self.write_idx = 0
+
+    def put(self, timestamp: float, value: float) -> None:
+        """Add a timestamped value to the buffer."""
+        idx = self.write_idx % self.maxsize
+        self.timestamps[idx] = timestamp
+        self.values[idx] = value
+        self.write_idx += 1
+
+    def get_recent_values(self, time_window: float, current_time: Optional[float] = None) -> np.ndarray:
+        """Get values within the specified time window."""
+        if current_time is None:
+            current_time = time.time()
+
+        valid_mask = self.timestamps > (current_time - time_window)
+        return self.values[valid_mask]
+
+
 class GripperForceLimiter:
     def __init__(
         self,
@@ -421,7 +449,7 @@ class GripperForceLimiter:
         self._is_clogged = False
         self._gripper_adjusted_qpos = None
         self._kp = kp
-        self._past_gripper_effort_queue = queue.Queue(maxsize=1000)
+        self._past_gripper_effort_buffer = LockFreeCircularBuffer(maxsize=1000)
         self.average_torque_window = average_torque_window
         self.debug = debug
         (self.clog_force_threshold, self.clog_speed_threshold, self.sign, _gripper_force_torque_map) = (
@@ -434,11 +462,11 @@ class GripperForceLimiter:
 
     def compute_target_gripper_torque(self, gripper_state: Dict[str, float]) -> float:
         current_speed = gripper_state["current_qvel"]
-        history_ts, history_effort = zip(*self._past_gripper_effort_queue.queue, strict=False)
-        history_ts = np.array(history_ts)
-        history_effort = np.array(history_effort)
-        valid_idx = history_ts > time.time() - self.average_torque_window
-        average_effort = np.abs(np.mean(history_effort[valid_idx]))
+        relevant_history_effort = self._past_gripper_effort_buffer.get_recent_values(self.average_torque_window)
+        if len(relevant_history_effort) > 0:
+            average_effort = np.abs(np.mean(relevant_history_effort))
+        else:
+            average_effort = 0.0
 
         if self.debug:
             print(f"average_effort: {average_effort}")
@@ -460,10 +488,8 @@ class GripperForceLimiter:
             return None
 
     def update(self, gripper_state: Dict[str, float]) -> None:
-        if self._past_gripper_effort_queue.full():
-            self._past_gripper_effort_queue.get()
         current_ts = time.time()
-        self._past_gripper_effort_queue.put((current_ts, gripper_state["current_eff"]))
+        self._past_gripper_effort_buffer.put(current_ts, gripper_state["current_eff"])
         target_eff = self.compute_target_gripper_torque(gripper_state)
 
         if target_eff is not None:
