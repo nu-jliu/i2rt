@@ -66,7 +66,10 @@ class MotorInfo:
     voltage: float = -1
     temp_mos: float = -1
     temp_rotor: float = -1
+<<<<<<< HEAD
     timestamp: float = 0.0
+=======
+>>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
 
 
 @dataclass
