@@ -19,10 +19,7 @@ from i2rt.motor_drivers.utils import (
     float_to_uint,
     uint_to_float,
 )
-<<<<<<< HEAD
 from i2rt.utils.encoder_manager import EncoderConfig, PassiveJointEncoder
-=======
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
 from i2rt.utils.utils import RateRecorder
 
 log_level = os.getenv("LOGLEVEL", "ERROR").upper()
@@ -71,7 +68,6 @@ class PassiveEncoderInfo:
 
 
 class PassiveEncoderReader:
-<<<<<<< HEAD
     def __init__(
         self,
         can_interface: CanInterface,
@@ -87,13 +83,6 @@ class PassiveEncoderReader:
         self.receive_mode = receive_mode
         # check the encoder config, the report frequency must be set to 0 for passive mode
         result = PassiveJointEncoder.validate_encoders(self.can_interface.channel, encoder_config)
-=======
-    def __init__(self, can_interface: CanInterface, receive_mode: ReceiveMode = ReceiveMode.plus_one):
-        self.can_interface = can_interface
-        # assert self.can_interface.use_buffered_reader, "Passive encoder reader must use buffered reader"
-
-        self.receive_mode = receive_mode
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
 
     def read_encoder(self, encoder_id: int) -> PassiveEncoderInfo:
         # this encoder's trigger message is 0x02
@@ -102,19 +91,11 @@ class PassiveEncoderReader:
             encoder_id, encoder_id, data, expected_id=self.receive_mode.get_receive_id(0x50E), max_retry=15
         )
         pos, vel, button_state = self._parse_encoder_message(message)
-<<<<<<< HEAD
         pos_range = [-self.range_rad, self.range_rad]
         pos = np.clip(pos, pos_range[0], pos_range[1])
         # normalize pos to 1 - 0
         delta = np.abs(0.0 - pos)
         pos = delta / self.range_rad
-=======
-        pos_range = [-0.7, 0.7]
-        pos = np.clip(pos, pos_range[0], pos_range[1])
-        # normalize pos to 1 - 0
-        delta = np.abs(0.0 - pos)
-        pos = delta / 0.7
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
         result = PassiveEncoderInfo(id=encoder_id, position=pos, velocity=vel, io_inputs=button_state)
         return result
 
@@ -132,11 +113,7 @@ class PassiveEncoderReader:
 
 
 class EncoderChain:
-<<<<<<< HEAD
     def __init__(self, encoder_ids: List[int], encoder_interface: PassiveEncoderReader):
-=======
-    def __init__(self, encoder_ids: List[int], encoder_interface: CanInterface):
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
         self.encoder_ids = encoder_ids
         self.encoder_interface = encoder_interface
 
@@ -613,10 +590,7 @@ class DMChainCanInterface(MotorChain):
 
     def read_states(self, torques: Optional[np.ndarray] = None) -> List[MotorInfo]:
         motor_infos = []
-<<<<<<< HEAD
         timestamp = time.time()
-=======
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
         with self.state_lock:
             for idx in range(len(self.motor_list)):
                 state = self.state[idx]
@@ -630,10 +604,7 @@ class DMChainCanInterface(MotorChain):
                         pos=self._joint_position_real_to_sim_idx(self.absolute_positions[idx], idx),
                         temp_rotor=state.temperature_rotor,
                         temp_mos=state.temperature_mos,
-<<<<<<< HEAD
                         timestamp=timestamp,
-=======
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
                     )
                 )
         return motor_infos

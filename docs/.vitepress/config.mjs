@@ -24,10 +24,7 @@ export default defineConfig({
       { text: 'Get Started', link: '/getting-started/installation' },
       { text: 'SDK', link: '/sdk/' },
       { text: 'Examples', link: '/examples/' },
-<<<<<<< HEAD
       { text: 'Releases', link: '/releases/v1.0' },
-=======
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
       { text: 'i2rt.com', link: 'https://i2rt.com', target: '_blank' },
     ],
 
@@ -90,7 +87,6 @@ export default defineConfig({
           ],
         },
       ],
-<<<<<<< HEAD
       '/releases/': [
         {
           text: 'Release Notes',
@@ -99,8 +95,6 @@ export default defineConfig({
           ],
         },
       ],
-=======
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
       '/support/': [
         {
           text: 'Support',

@@ -16,10 +16,7 @@ dependencies = [
     "mujoco==3.3.5",
     "numpy==2.2.6",
     "portal==3.7.3",
-<<<<<<< HEAD
     "pydantic>=2.0",
-=======
->>>>>>> 53f0a8ad9b224d28133b27217a967369cdf07c51
     "pygame==2.6.1",
     "python-can==4.5.0",
     "qpsolvers[quadprog]==4.7.1",
