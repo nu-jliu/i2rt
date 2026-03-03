@@ -436,7 +436,7 @@ class MotorChainRobot(Robot):
         eff = np.array([motor.eff for motor in motor_state])
         temp_mos = np.array([motor.temp_mos for motor in motor_state])
         temp_rotor = np.array([motor.temp_rotor for motor in motor_state])
-        timestamp = motor_state[0].timestamp
+        timestamp = time.time()
         return JointStates(
             names=names,
             pos=pos,
@@ -454,7 +454,7 @@ class MotorChainRobot(Robot):
             q = joint_state.pos[: self._gripper_index] if self._gripper_index is not None else joint_state.pos
             t = self.kdl.compute_inverse_dynamics(q, np.zeros(q.shape), np.zeros(q.shape))
             # print gravity torque to 2f
-            if np.max(np.abs(t)) > 20.0:
+            if np.max(np.abs(t)) > 25.0:
                 print([f"{s:.2f}" for s in t])
                 raise RuntimeError(f"{self}: too large torques")
             if self._gripper_index is None:
