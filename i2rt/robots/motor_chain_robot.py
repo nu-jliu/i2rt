@@ -436,7 +436,7 @@ class MotorChainRobot(Robot):
         eff = np.array([motor.eff for motor in motor_state])
         temp_mos = np.array([motor.temp_mos for motor in motor_state])
         temp_rotor = np.array([motor.temp_rotor for motor in motor_state])
-        timestamp = time.time()
+        timestamp = motor_state[0].timestamp
         return JointStates(
             names=names,
             pos=pos,
