@@ -123,6 +123,7 @@ class MotorType:
     DM4310 = "DM4310"
     DM4310V = "DM4310V"
     DM4340 = "DM4340"
+    DM6248 = "DM6248"
     DMH6215 = "DMH6215"
     DMH6215MIT = "DMH6215MIT"
     DM3507 = "DM3507"
@@ -167,6 +168,17 @@ class MotorType:
                 VELOCITY_MIN=-10,
                 TORQUE_MAX=28,
                 TORQUE_MIN=-28,
+                # max kp 500
+                # max kd 5
+            )
+        elif motor_type == cls.DM6248:
+            return MotorConstants(
+                POSITION_MAX=12.5,
+                POSITION_MIN=-12.5,
+                VELOCITY_MAX=20,
+                VELOCITY_MIN=-20,
+                TORQUE_MAX=120,
+                TORQUE_MIN=-120,
                 # max kp 500
                 # max kd 5
             )

@@ -368,13 +368,13 @@ class DMChainCanInterface(MotorChain):
         get_same_bus_device_driver: Optional[Callable] = None,
         use_buffered_reader: bool = False,  # buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader
     ):
-        assert (
-            not use_buffered_reader
-        ), "buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader"
+        assert not use_buffered_reader, (
+            "buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader"
+        )
         assert len(motor_list) > 0
-        assert (
-            len(motor_list) == len(motor_offset) == len(motor_direction)
-        ), f"len{len(motor_list)}, len{len(motor_offset)}, len{len(motor_direction)}"
+        assert len(motor_list) == len(motor_offset) == len(motor_direction), (
+            f"len{len(motor_list)}, len{len(motor_offset)}, len{len(motor_direction)}"
+        )
         self.motor_list = motor_list
         self.motor_offset = np.array(motor_offset)
         self.motor_direction = np.array(motor_direction)

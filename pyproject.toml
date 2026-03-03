@@ -12,7 +12,7 @@ dependencies = [
     "click<8.2.0",
     "dm-env==1.6",
     "evdev==1.9.2 ; sys_platform == 'linux'",
-    "mink==0.0.13",
+    "mink>=0.0.13",
     "mujoco==3.3.5",
     "numpy==2.2.6",
     "portal==3.7.3",
@@ -22,11 +22,13 @@ dependencies = [
     "ruckig==0.15.3",
     "threadpoolctl==3.6.0",
     "tyro==0.9.26",
+    "viser>=0.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest==8.4.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.flit.module]
@@ -48,8 +50,6 @@ lint.select = [
     "RUF"  # Ruff rules.
 ]
 lint.ignore = [
-    "ANN101",
-    "ANN102",
     "ANN204",
     "ANN401",
     "E741", # Ambiguous variable name. (l, O, or I)
@@ -61,6 +61,7 @@ lint.ignore = [
     "PLR0915",  # Too many statements.
     "PLR0913",  # Too many arguments.
     "PLC0414",  # Import alias does not rename variable. (this is used for exporting names)
+    "PLC0415",  # Import not at top level (conditional and __main__ imports are standard).
     "PLC1901",  # Use falsey strings.
     "PLR0911",  # Too many return statements.
     "PLR0912",  # Too many branches.
