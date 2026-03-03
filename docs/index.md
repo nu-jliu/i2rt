@@ -36,7 +36,7 @@ layout: page
   <a class="feat" href="/i2rt/products/yam">
     <span class="feat-icon">🦾</span>
     <h3>YAM Arm Family</h3>
-    <p>Four-tier 6-DOF line with real-time CAN bus control and MuJoCo visualization out of the box.</p>
+    <p>Low-cost, low-inertia 6-DOF arms designed for AI training and teleoperation — four tiers from research to production.</p>
     <span class="feat-link">Learn more →</span>
   </a>
   <a class="feat" href="/i2rt/products/flow-base">

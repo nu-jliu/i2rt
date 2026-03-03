@@ -48,6 +48,12 @@
   border-bottom: 1px solid rgba(255, 122, 41, 0.12) !important;
 }
 
+/* Widen the search button in the navbar */
+.VPNavBarSearch .DocSearch-Button,
+.VPNavBarSearch button[aria-label="Search"] {
+  min-width: 260px !important;
+}
+
 /* Stretch nav container edge-to-edge with comfortable padding */
 .VPNavBar > .wrapper {
   max-width: 100% !important;
