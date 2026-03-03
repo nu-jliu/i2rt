@@ -304,11 +304,15 @@ class ViserControlInterface:
                 for s in joint_sliders:
                     s.disabled = True
                 if gripper_slider is not None:
-                    gripper_slider.disabled = True
+                    gripper_slider.disabled = False
                 # Snap IK target to current EE pose
                 T = self._ee_pose_4x4()
                 ik_ctrl.position = T[:3, 3]
                 ik_ctrl.wxyz = self._mat3_to_wxyz(T[:3, :3])
+                # Sync gripper slider to current position
+                if gripper_slider is not None and self._gripper_index is not None:
+                    q = self._robot.get_joint_pos()
+                    gripper_slider.value = float(q[self._gripper_index])
             elif sel == "Joint sliders":
                 state["mode"] = "joint"
                 ik_ctrl.visible = False
@@ -375,6 +379,8 @@ class ViserControlInterface:
                         _, ik_q = self._kin.ik(target, self._ee_site, init_q=init_q)
                         cmd = self._robot.get_joint_pos().copy()
                         cmd[: self._n_arm] = ik_q[: self._n_arm]
+                        if gripper_slider is not None and self._gripper_index is not None:
+                            cmd[self._gripper_index] = float(gripper_slider.value)
                         self._robot.command_joint_pos(cmd)
                         # Reflect solved angles in sliders
                         for i, s in enumerate(joint_sliders):

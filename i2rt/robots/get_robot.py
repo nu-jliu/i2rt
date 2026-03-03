@@ -155,12 +155,17 @@ def get_yam_robot(
     if sim:
         from i2rt.robots.sim_robot import SimRobot
 
+        # In sim mode, grippers that need calibration have no limits yet — use [0, 1] default.
+        sim_gripper_limits = gripper_limits
+        if with_gripper and sim_gripper_limits is None:
+            sim_gripper_limits = np.array([0.0, 1.0])
+
         return SimRobot(
             xml_path=model_path,
             n_dofs=len(motor_list),
             joint_limits=joint_limits,
             gripper_index=6 if with_gripper else None,
-            gripper_limits=gripper_limits,
+            gripper_limits=sim_gripper_limits,
         )
 
     # --- Real hardware path ---------------------------------------------------
