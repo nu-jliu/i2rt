@@ -22,15 +22,13 @@ dependencies = [
     "ruckig==0.15.3",
     "threadpoolctl==3.6.0",
     "tyro==0.9.26",
+    "viser>=0.2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest==8.4.0",
     "pytest-xdist>=3.8.0",
-]
-viser = [
-    "viser>=0.2.0",
 ]
 
 [tool.flit.module]

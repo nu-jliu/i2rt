@@ -200,7 +200,7 @@ class ViserControlInterface:
         mesh_handles = self._setup_scene(server)
         ee_frame = server.scene.add_frame("ee_frame", axes_length=0.06, axes_radius=0.004)
         ik_ctrl = server.scene.add_transform_controls(
-            "ik_target",
+            "/ik_target",
             position=np.zeros(3),
             wxyz=np.array([1.0, 0.0, 0.0, 0.0]),
             scale=0.15,
@@ -372,15 +372,14 @@ class ViserControlInterface:
                         target[:3, 3] = np.asarray(ik_ctrl.position)
                         target[:3, :3] = self._wxyz_to_mat3(np.asarray(ik_ctrl.wxyz))
                         init_q = self._data.qpos[: self._nq].copy()
-                        ok, ik_q = self._kin.ik(target, self._ee_site, init_q=init_q)
-                        if ok:
-                            cmd = self._robot.get_joint_pos().copy()
-                            cmd[: self._n_arm] = ik_q[: self._n_arm]
-                            self._robot.command_joint_pos(cmd)
-                            # Reflect solved angles in sliders
-                            for i, s in enumerate(joint_sliders):
-                                if i < self._n_arm:
-                                    s.value = float(np.degrees(ik_q[i]))
+                        _, ik_q = self._kin.ik(target, self._ee_site, init_q=init_q)
+                        cmd = self._robot.get_joint_pos().copy()
+                        cmd[: self._n_arm] = ik_q[: self._n_arm]
+                        self._robot.command_joint_pos(cmd)
+                        # Reflect solved angles in sliders
+                        for i, s in enumerate(joint_sliders):
+                            if i < self._n_arm:
+                                s.value = float(np.degrees(ik_q[i]))
 
                     elif mode == "joint":
                         # Build command from slider values
