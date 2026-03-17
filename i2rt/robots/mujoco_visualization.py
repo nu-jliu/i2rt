@@ -20,8 +20,8 @@ from i2rt.robots.get_robot import get_yam_robot
 from i2rt.robots.utils import ArmType, GripperType
 
 
-def _inject_actuators(xml_path: str) -> tuple[str, mujoco.MjModel]:
-    """Add position actuators for every joint so the viewer shows Control panel sliders."""
+def _inject_actuators(xml_path: str, n_dofs: int, gripper_index: int | None = None) -> tuple[str, mujoco.MjModel]:
+    """Add position actuators for controllable joints so the viewer shows Control panel sliders."""
     model = mujoco.MjModel.from_xml_path(xml_path)
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -30,7 +30,7 @@ def _inject_actuators(xml_path: str) -> tuple[str, mujoco.MjModel]:
     if actuator_el is None:
         actuator_el = ET.SubElement(root, "actuator")
 
-    for j in range(model.njnt):
+    for j in range(min(n_dofs, model.njnt)):
         jnt_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j)
         if jnt_name is None:
             continue
@@ -38,7 +38,10 @@ def _inject_actuators(xml_path: str) -> tuple[str, mujoco.MjModel]:
         act.set("name", f"slider_{jnt_name}")
         act.set("joint", jnt_name)
         act.set("kp", "100")
-        if model.jnt_limited[j]:
+        if j == gripper_index:
+            act.set("ctrlrange", "0 1")
+            act.set("ctrllimited", "true")
+        elif model.jnt_limited[j]:
             lo, hi = model.jnt_range[j]
             act.set("ctrlrange", f"{lo} {hi}")
             act.set("ctrllimited", "true")
@@ -61,9 +64,21 @@ def _denormalize_slide_joints(model: mujoco.MjModel, data: mujoco.MjData, n_set:
             data.qpos[adr] = lo + data.qpos[adr] * (hi - lo)
 
 
-def _has_self_collision(model: mujoco.MjModel, data: mujoco.MjData, target_ctrl: np.ndarray, n: int) -> bool:
+def _has_self_collision(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    target_ctrl: np.ndarray,
+    n: int,
+    gripper_index: int | None = None,
+    gripper_limits: np.ndarray | None = None,
+) -> bool:
     """Return True if target joint positions would cause self-collision."""
     data.qpos[:n] = target_ctrl[:n]
+    # Convert normalized 0-1 gripper value to raw MuJoCo joint angle
+    if gripper_index is not None and gripper_limits is not None and gripper_index < n:
+        adr = model.jnt_qposadr[gripper_index]
+        lo, hi = float(gripper_limits[0]), float(gripper_limits[1])
+        data.qpos[adr] = lo + data.qpos[adr] * (hi - lo)
     _denormalize_slide_joints(model, data, n)
     _enforce_eq_constraints(model, data)
     mujoco.mj_forward(model, data)
@@ -72,7 +87,10 @@ def _has_self_collision(model: mujoco.MjModel, data: mujoco.MjData, target_ctrl:
         if c.dist >= -1e-3:
             continue
         # Ignore contacts involving plane geoms (ground floor)
-        if model.geom_type[c.geom1] == mujoco.mjtGeom.mjGEOM_PLANE or model.geom_type[c.geom2] == mujoco.mjtGeom.mjGEOM_PLANE:
+        if (
+            model.geom_type[c.geom1] == mujoco.mjtGeom.mjGEOM_PLANE
+            or model.geom_type[c.geom2] == mujoco.mjtGeom.mjGEOM_PLANE
+        ):
             continue
         # Ignore contacts between adjacent bodies (parent-child links)
         b1 = model.geom_bodyid[c.geom1]
@@ -113,10 +131,15 @@ def main() -> None:
         sim=args.sim,
     )
 
-    _, viz_model = _inject_actuators(robot.xml_path)
+    robot_info = robot.get_robot_info()
+    gripper_index: int | None = robot_info.get("gripper_index")
+    gripper_limits = robot_info.get("gripper_limits")
+    is_sim: bool = robot_info.get("sim", False)
+
+    n_dofs = robot.num_dofs()
+    _, viz_model = _inject_actuators(robot.xml_path, n_dofs=n_dofs, gripper_index=gripper_index)
     viz_data = mujoco.MjData(viz_model)
     check_data = mujoco.MjData(viz_model)
-    n_dofs = robot.num_dofs()
 
     print(f"Loaded {args.arm} + {args.gripper} ({n_dofs} DOFs, sim={args.sim})")
     print("Use the Control panel sliders (right side) to move joints.")
@@ -128,12 +151,18 @@ def main() -> None:
             ctrl = np.zeros(n_dofs)
             ctrl[:n_ctrl] = viz_data.ctrl[:n_ctrl]
 
-            if _has_self_collision(viz_model, check_data, ctrl, n_ctrl):
+            if _has_self_collision(viz_model, check_data, ctrl, n_ctrl, gripper_index, gripper_limits):
                 if not in_collision:
                     print("Collision detected - command blocked")
                     in_collision = True
             else:
-                robot.command_joint_pos(ctrl)
+                cmd = ctrl.copy()
+                if is_sim and gripper_index is not None and gripper_limits is not None:
+                    # SimRobot expects raw joint values; convert 0-1 → raw
+                    lo, hi = float(gripper_limits[0]), float(gripper_limits[1])
+                    cmd[gripper_index] = lo + ctrl[gripper_index] * (hi - lo)
+                # MotorChainRobot expects 0-1 for gripper (JointMapper handles it)
+                robot.command_joint_pos(cmd)
                 if in_collision:
                     print("Collision cleared - commands resumed")
                     in_collision = False
@@ -141,6 +170,11 @@ def main() -> None:
             qpos = robot.get_joint_pos()
             n = min(len(qpos), viz_model.nq)
             viz_data.qpos[:n] = qpos[:n]
+
+            # MotorChainRobot returns 0-1 for gripper; convert to raw for MuJoCo rendering
+            if not is_sim and gripper_index is not None and gripper_limits is not None:
+                lo, hi = float(gripper_limits[0]), float(gripper_limits[1])
+                viz_data.qpos[gripper_index] = lo + qpos[gripper_index] * (hi - lo)
 
             _denormalize_slide_joints(viz_model, viz_data, n)
             _enforce_eq_constraints(viz_model, viz_data)
