@@ -38,8 +38,8 @@
                    (forwards) and right-side up. -->
               <body name="gripper_adapter" pos="0 -0.0085 -0.006" quat="0 1 0 0">
                 <inertial pos="0 0 0" mass="1e-9" diaginertia="1e-9 1e-9 1e-9"/>
-                <!-- link_6 is replaced at runtime by combine_arm_and_gripper_xml() -->
-                <body name="link_6" pos="2.39858e-07 -0.0419481 0.0404996" quat="0.499998 -0.5 -0.5 -0.500002">
+                <!-- gripper is replaced at runtime by combine_arm_and_gripper_xml() -->
+                <body name="gripper" pos="2.39858e-07 -0.0419481 0.0404996" quat="0.499998 -0.5 -0.5 -0.500002">
                   <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9"/>
                   <joint name="joint6" pos="0 0 0" axis="0 0 -1" range="-2.0944 2.0944" actuatorfrcrange="-10 10"/>
                   <site name="tcp_site"   pos="0 0 0"      quat="1 0 0 1" size="0.005" rgba="1 0 0 1"/>

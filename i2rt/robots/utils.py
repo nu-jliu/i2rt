@@ -38,15 +38,15 @@ def combine_arm_and_gripper_xml(
 ) -> str:
     """Combine arm and gripper XML files into a single XML string.
 
-    Replaces the <body name="link_6"> subtree in the arm XML with the one from the
+    Replaces the <body name="gripper"> subtree in the arm XML with the one from the
     gripper XML (if present). If ee_mass or ee_inertia are provided, update the
-    inertial properties of the resulting link_6. Returns path to combined XML in /tmp/.
+    inertial properties of the resulting gripper body. Returns path to combined XML in /tmp/.
 
     Args:
         arm_path: Path to the arm MuJoCo XML file.
         gripper_path: Path to the gripper MuJoCo XML file. If falsy, the arm XML
             is used as-is (no gripper replacement).
-        ee_mass: Optional end-effector mass (kg) to override in link_6's inertial.
+        ee_mass: Optional end-effector mass (kg) to override in gripper's inertial.
         ee_inertia: Optional end-effector inertia array. Expected as a flat array of
             10 elements: [ipos(3), quat(4), diaginertia(3)].
 
@@ -71,14 +71,12 @@ def combine_arm_and_gripper_xml(
     if arm_compiler is not None and arm_compiler.get("meshdir"):
         del arm_compiler.attrib["meshdir"]
 
-    # attempt to load gripper and replace link_6 if available
+    # attempt to load gripper and replace gripper body if available
     if gripper_path:
         try:
             grip_tree = ET.parse(gripper_path)
             grip_root = grip_tree.getroot()
-            grip_body = grip_root.find(".//body[@name='link_6']")
-            if grip_body is None:
-                grip_body = grip_root.find(".//body[@name='link6']")
+            grip_body = grip_root.find(".//body[@name='gripper']")
         except Exception:
             grip_root = None
             grip_body = None
@@ -109,13 +107,13 @@ def combine_arm_and_gripper_xml(
                         arm_asset.append(elem)
                         existing.add(key)
 
-        # replace arm's link_6 with gripper's if found
+        # replace arm's gripper body with gripper's if found
         if grip_body is not None:
             replaced = False
             for parent in arm_root.iter():
                 children = list(parent)
                 for idx, child in enumerate(children):
-                    if child.tag == "body" and child.get("name") in ("link_6", "link6"):
+                    if child.tag == "body" and child.get("name") == "gripper":
                         parent.remove(child)
                         parent.insert(idx, deepcopy(grip_body))
                         replaced = True
@@ -135,11 +133,9 @@ def combine_arm_and_gripper_xml(
                 for child in grip_section:
                     arm_section.append(deepcopy(child))
 
-    # find resulting link_6 and apply end-effector overrides (mass/inertia)
+    # find resulting gripper body and apply end-effector overrides (mass/inertia)
     if ee_mass is not None or ee_inertia is not None:
-        res_body = arm_root.find(".//body[@name='link_6']")
-        if res_body is None:
-            res_body = arm_root.find(".//body[@name='link6']")
+        res_body = arm_root.find(".//body[@name='gripper']")
         if res_body is not None:
             inertial = res_body.find("inertial")
             if inertial is None:
