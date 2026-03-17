@@ -30,6 +30,21 @@ GRIPPER_TEACHING_HANDLE_PATH = os.path.join(
 GRIPPER_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/no_gripper/no_gripper.xml")
 
 
+def _find_deepest_body(element: ET.Element) -> ET.Element:
+    """Return the deepest (leaf) body in a kinematic chain.
+
+    Walks into the first child ``<body>`` at each level until no more child
+    bodies exist, then returns that leaf body.  This is used to locate the
+    tip of the arm chain where the gripper should be appended.
+    """
+    current = element
+    while True:
+        child_bodies = [c for c in current if c.tag == "body"]
+        if not child_bodies:
+            return current
+        current = child_bodies[0]
+
+
 def combine_arm_and_gripper_xml(
     arm_path: str,
     gripper_path: str,
@@ -38,14 +53,17 @@ def combine_arm_and_gripper_xml(
 ) -> str:
     """Combine arm and gripper XML files into a single XML string.
 
-    Replaces the <body name="gripper"> subtree in the arm XML with the one from the
-    gripper XML (if present). If ee_mass or ee_inertia are provided, update the
-    inertial properties of the resulting gripper body. Returns path to combined XML in /tmp/.
+    Appends the ``<body name="gripper">`` subtree from the gripper XML as a
+    child of the deepest body in the arm's kinematic chain.  If the arm
+    already contains a ``<body name="gripper">`` (legacy format), it is
+    replaced instead.  If *ee_mass* or *ee_inertia* are provided, update the
+    inertial properties of the resulting gripper body.  Returns path to
+    combined XML in ``/tmp/``.
 
     Args:
         arm_path: Path to the arm MuJoCo XML file.
         gripper_path: Path to the gripper MuJoCo XML file. If falsy, the arm XML
-            is used as-is (no gripper replacement).
+            is used as-is (no gripper attachment).
         ee_mass: Optional end-effector mass (kg) to override in gripper's inertial.
         ee_inertia: Optional end-effector inertia array. Expected as a flat array of
             10 elements: [ipos(3), quat(4), diaginertia(3)].
@@ -71,7 +89,7 @@ def combine_arm_and_gripper_xml(
     if arm_compiler is not None and arm_compiler.get("meshdir"):
         del arm_compiler.attrib["meshdir"]
 
-    # attempt to load gripper and replace gripper body if available
+    # attempt to load gripper and attach gripper body if available
     if gripper_path:
         try:
             grip_tree = ET.parse(gripper_path)
@@ -107,19 +125,29 @@ def combine_arm_and_gripper_xml(
                         arm_asset.append(elem)
                         existing.add(key)
 
-        # replace arm's gripper body with gripper's if found
+        # Attach gripper body to the arm.
+        # If the arm still has a legacy <body name="gripper"> placeholder, replace it.
+        # Otherwise append the gripper body as a child of the deepest arm body.
         if grip_body is not None:
-            replaced = False
-            for parent in arm_root.iter():
-                children = list(parent)
-                for idx, child in enumerate(children):
-                    if child.tag == "body" and child.get("name") == "gripper":
-                        parent.remove(child)
-                        parent.insert(idx, deepcopy(grip_body))
-                        replaced = True
-                        break
-                if replaced:
+            existing_gripper = arm_root.find(".//body[@name='gripper']")
+            if existing_gripper is not None:
+                # Legacy path: replace the placeholder
+                for parent in arm_root.iter():
+                    children = list(parent)
+                    for idx, child in enumerate(children):
+                        if child.tag == "body" and child.get("name") == "gripper":
+                            parent.remove(child)
+                            parent.insert(idx, deepcopy(grip_body))
+                            break
+                    else:
+                        continue
                     break
+            else:
+                # New path: append gripper body to the deepest body in the arm chain
+                worldbody = arm_root.find("worldbody")
+                if worldbody is not None:
+                    tip_body = _find_deepest_body(worldbody)
+                    tip_body.append(deepcopy(grip_body))
 
         # merge optional top-level sections (equality, contact) from gripper
         if grip_root is not None:

@@ -95,11 +95,12 @@ def test_combined_xml_preserves_dofs(arm: ArmType, gripper: GripperType) -> None
     gripper_joints = _count_joints(gripper_root)
     combined_joints = _count_joints(combined_root)
 
-    # The arm has joints 1-6. The gripper replaces the gripper body, which carries joint6.
-    # So combined = arm_joints - 1 (arm's joint6 removed) + gripper_joints.
-    expected = arm_joints - 1 + gripper_joints
+    # The arm defines only its own joints (no gripper placeholder).
+    # The gripper body (with its joints) is appended at runtime.
+    # So combined = arm_joints + gripper_joints.
+    expected = arm_joints + gripper_joints
     assert combined_joints == expected, (
-        f"Expected {expected} joints (arm={arm_joints} - 1 + gripper={gripper_joints}), got {combined_joints}"
+        f"Expected {expected} joints (arm={arm_joints} + gripper={gripper_joints}), got {combined_joints}"
     )
 
 
