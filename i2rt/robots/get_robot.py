@@ -51,8 +51,6 @@ class _ArmHWConfig:
     kp: np.ndarray  # position gain, one per arm joint
     kd: np.ndarray  # damping gain,  one per arm joint
     gravity_comp_factor: np.ndarray  # per-joint factor, one per arm joint (6 elements)
-    coulomb_friction: np.ndarray  # Coulomb (static) friction torque (Nm), one per arm joint
-    viscous_friction: np.ndarray  # viscous friction coefficient (Nm·s/rad), one per arm joint
 
 
 # YAM / YAM Pro / YAM Ultra: 3xDM4340 (shoulder) + 3xDM4310 (elbow/wrist)
