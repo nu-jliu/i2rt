@@ -50,7 +50,9 @@ class _ArmHWConfig:
     directions: tuple  # motor polarity (+1 / -1), one per arm joint
     kp: np.ndarray  # position gain, one per arm joint
     kd: np.ndarray  # damping gain,  one per arm joint
-    gravity_comp_factor: float
+    gravity_comp_factor: np.ndarray  # per-joint factor, one per arm joint (6 elements)
+    coulomb_friction: np.ndarray  # Coulomb (static) friction torque (Nm), one per arm joint
+    viscous_friction: np.ndarray  # viscous friction coefficient (Nm·s/rad), one per arm joint
 
 
 # YAM / YAM Pro / YAM Ultra: 3xDM4340 (shoulder) + 3xDM4310 (elbow/wrist)
@@ -66,7 +68,7 @@ _YAM_HW = _ArmHWConfig(
     directions=(1, 1, 1, 1, 1, 1),
     kp=np.array([80.0, 80.0, 80.0, 40.0, 10.0, 10.0]),
     kd=np.array([5.0, 5.0, 5.0, 1.5, 1.5, 1.5]),
-    gravity_comp_factor=1.3,
+    gravity_comp_factor=np.full(6, 1.3),
 )
 
 # big_yam: heavier arm - joints 1-2 use DM6248, joints 3-4 use DM4340, joints 5-6 use DM4310.
@@ -83,7 +85,7 @@ _BIG_YAM_HW = _ArmHWConfig(
     directions=(1, -1, 1, 1, 1, 1),
     kp=np.array([80.0, 80.0, 80.0, 40.0, 40.0, 10.0]),
     kd=np.array([5.0, 5.0, 5.0, 3.0, 1.5, 1.5]),
-    gravity_comp_factor=1.0,
+    gravity_comp_factor=np.full(6, 1.0),
 )
 
 _ARM_HW_CONFIGS: dict[ArmType, _ArmHWConfig] = {
@@ -106,6 +108,7 @@ def get_yam_robot(
     zero_gravity_mode: bool = True,
     ee_mass: Optional[float] = None,
     ee_inertia: Optional[np.ndarray] = None,
+    gravity_comp_factor: Optional[np.ndarray] = None,
     sim: bool = False,
     joint_state_saver_factory: Optional[Callable[[], Any]] = None,
     set_realtime_and_pin_callback: Optional[Callable[[int], None]] = None,
@@ -119,12 +122,17 @@ def get_yam_robot(
         zero_gravity_mode: Start in gravity-compensation mode.
         ee_mass: Optional end-effector mass override (kg) for MuJoCo inertial.
         ee_inertia: Optional 10-element inertia override [ipos(3), quat(4), diaginertia(3)].
+        gravity_comp_factor: Per-joint array (6 elements, arm joints only) multiplied against gravity torques.
+            Overrides the arm-type default when provided.
         sim: If True, return a SimRobot instead of connecting to real hardware.
     """
     with_gripper = gripper_type not in (GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER)
     with_teaching_handle = gripper_type == GripperType.YAM_TEACHING_HANDLE
 
     hw = _ARM_HW_CONFIGS[arm_type]
+    effective_gravity_comp = hw.gravity_comp_factor if gravity_comp_factor is None else gravity_comp_factor
+    if with_gripper:
+        effective_gravity_comp = np.append(effective_gravity_comp, 1.0)
 
     model_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia)
 
@@ -214,7 +222,7 @@ def get_yam_robot(
         motor_chain=motor_chain,
         xml_path=model_path,
         use_gravity_comp=True,
-        gravity_comp_factor=hw.gravity_comp_factor,
+        gravity_comp_factor=effective_gravity_comp,
         joint_limits=joint_limits,
         kp=kp,
         kd=kd,
@@ -232,34 +240,3 @@ def get_yam_robot(
             limit_gripper_force=50.0,
         )
     return get_robot()
-
-
-if __name__ == "__main__":
-    import argparse
-
-    arm_choices = [a.value for a in ArmType]
-    gripper_choices = [g.value for g in GripperType]
-
-    parser = argparse.ArgumentParser(description="Initialize a YAM robot")
-    parser.add_argument("--arm", type=str, default="yam", choices=arm_choices)
-    parser.add_argument("--gripper", type=str, default="linear_4310", choices=gripper_choices)
-    parser.add_argument("--sim", action="store_true", help="Use sim mode instead of real hardware")
-    parser.add_argument("--channel", type=str, default="can0")
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO)
-
-    arm_type = ArmType.from_string_name(args.arm)
-    gripper_type = GripperType.from_string_name(args.gripper)
-
-    robot = get_yam_robot(
-        channel=args.channel,
-        arm_type=arm_type,
-        gripper_type=gripper_type,
-        sim=args.sim,
-    )
-    print(f"Robot initialized: arm={args.arm}, gripper={args.gripper}, sim={args.sim}")
-
-    while True:
-        print(robot.get_observations())
-        time.sleep(1)

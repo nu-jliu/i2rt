@@ -68,7 +68,7 @@ class MotorChainRobot(Robot):
         xml_path: Optional[str] = None,
         use_gravity_comp: bool = True,
         gravity: Optional[np.ndarray] = None,
-        gravity_comp_factor: float = 1.0,  # New parameter with default value
+        gravity_comp_factor: Optional[np.ndarray] = None,
         gripper_index: Optional[int] = None,  # Zero starting index: if you have a 6 dof arm and last one is gripper: 6
         kp: Union[float, List[float]] = 10.0,
         kd: Union[float, List[float]] = 1.0,
@@ -132,7 +132,7 @@ class MotorChainRobot(Robot):
         self._clip_motor_torque = clip_motor_torque
         self.motor_chain = motor_chain
         self.use_gravity_comp = use_gravity_comp
-        self.gravity_comp_factor = gravity_comp_factor  # Store the factor
+        self.gravity_comp_factor = gravity_comp_factor if gravity_comp_factor is not None else np.ones(len(motor_chain))
 
         # variables for gripper effort limiting
         self._gripper_index = gripper_index
@@ -207,6 +207,7 @@ class MotorChainRobot(Robot):
         # For SWE-454, check if the current qpos is in the joint limits
         self._check_current_qpos_in_joint_limits()
 
+        self._last_motor_torques: Optional[np.ndarray] = None
         self._stop_event = threading.Event()  # Add a stop event
         self._server_thread = threading.Thread(target=self.start_server, name="robot_server")
         self._server_thread.start()
@@ -317,6 +318,7 @@ class MotorChainRobot(Robot):
             g = self._compute_gravity_compensation(self._joint_state)
             motor_torques = joint_commands.torques + g * self.gravity_comp_factor
             motor_torques = np.clip(motor_torques, -self._clip_motor_torque, self._clip_motor_torque)
+            self._last_motor_torques = motor_torques.copy()
 
             if self._gripper_index is not None:
                 if self._limit_gripper_force > 0 and self._joint_state is not None:
@@ -472,6 +474,10 @@ class MotorChainRobot(Robot):
             int: The number of joints of the robot.
         """
         return len(self.motor_chain)
+
+    def get_motor_torques(self) -> Optional[np.ndarray]:
+        """Return the last computed motor torques (gravity comp + any command torques)."""
+        return self._last_motor_torques
 
     def get_joint_pos(self) -> np.ndarray:
         """Get the current state of the leader robot, including the gripper in radian.
