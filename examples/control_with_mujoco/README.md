@@ -1,22 +1,15 @@
 # MuJoCo Control Interface
 
-Interactive MuJoCo viewer for i2rt robots. Starts in gravity-comp visualisation mode
-and can toggle into IK-based mocap control.
+Interactive MuJoCo viewer for i2rt robots. Press SPACE to toggle between modes.
 
 ## Modes
-
-### Default (mocap IK control)
 
 | Mode | Description |
 |------|-------------|
 | **VIS** (default) | Mirrors the robot's live joint positions. Gravity-comp is active on real hardware. |
-| **CONTROL** | Moves the robot by dragging a target marker in the viewer via inverse kinematics. |
+| **CONTROL** | Moves the robot by dragging a target marker via inverse kinematics. Commands are blocked when a self-collision is detected. |
 
 Press **SPACE** in the viewer to toggle between modes.
-
-### Slider visualization (`--viz`)
-
-Interactive slider-based joint visualization with self-collision checking. Use the Control panel sliders (right side) to move joints. Commands are blocked when a self-collision is detected.
 
 ## Usage
 
@@ -31,10 +24,6 @@ python examples/control_with_mujoco/control_with_mujoco.py --arm big_yam --gripp
 
 # Arm-only (no gripper)
 python examples/control_with_mujoco/control_with_mujoco.py --arm yam --gripper no_gripper --sim
-
-# Slider visualization mode
-python examples/control_with_mujoco/control_with_mujoco.py --sim --viz
-python examples/control_with_mujoco/control_with_mujoco.py --arm yam --gripper crank_4310 --sim --viz
 ```
 
 ### Real hardware
@@ -54,7 +43,6 @@ python examples/control_with_mujoco/control_with_mujoco.py --arm big_yam --gripp
 | `--sim` | off | Use simulation instead of real hardware |
 | `--dt` | `0.02` | Control loop timestep in seconds |
 | `--site` | auto | EE site name (`grasp_site` for grippers, `tcp_site` for teaching handle) |
-| `--viz` | off | Slider visualization mode instead of mocap IK control |
 
 ## Viewer Controls (CONTROL mode)
 

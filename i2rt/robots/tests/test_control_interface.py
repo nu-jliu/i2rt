@@ -100,6 +100,18 @@ def test_control_mode_preserves_gripper(gripper: GripperType, site: str) -> None
 
 
 @pytest.mark.parametrize("gripper,site", GRIPPER_COMBOS, ids=_combo_id)
+def test_sync_mocap_to_sliders(gripper: GripperType, site: str) -> None:
+    """_sync_mocap_to_sliders should work even when nq > num_dofs (coupled joints)."""
+    robot, iface = _make_iface(gripper, site)
+    iface._mirror_robot()
+    iface._sync_sliders_to_robot()
+    # This used to crash with ValueError for linear grippers (nq=8, num_dofs=7)
+    iface._sync_mocap_to_sliders()
+    pos = iface._data.mocap_pos[iface._mocap_id]
+    assert np.all(np.isfinite(pos))
+
+
+@pytest.mark.parametrize("gripper,site", GRIPPER_COMBOS, ids=_combo_id)
 def test_ik_cycle_accuracy(gripper: GripperType, site: str) -> None:
     """IK at the current EE pose should converge and return near-original joints."""
     robot, iface = _make_iface(gripper, site)
