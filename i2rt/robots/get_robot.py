@@ -139,7 +139,7 @@ def get_yam_robot(
 
     model_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia, gripper_type=gripper_type)
 
-    # Load limits for motor-driven joints only (arm joints + wrist joint6 from gripper XML).
+    # Load limits for motor-driven joints only (arm joints + last wrist joint from gripper XML).
     all_joint_limits = _load_joint_limits_from_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
     n_arm_joints = len(hw.motor_list)
     joint_limits = all_joint_limits[:n_arm_joints]
@@ -178,7 +178,7 @@ def get_yam_robot(
             xml_path=model_path,
             n_dofs=len(motor_list),
             joint_limits=joint_limits,
-            gripper_index=6 if with_gripper else None,
+            gripper_index=n_arm_joints if with_gripper else None,
             gripper_limits=sim_gripper_limits,
         )
 
@@ -230,7 +230,7 @@ def get_yam_robot(
 
     if with_gripper:
         return get_robot(
-            gripper_index=6,
+            gripper_index=n_arm_joints,
             gripper_limits=gripper_limits,
             enable_gripper_calibration=gripper_needs_cal,
             gripper_type=gripper_type,

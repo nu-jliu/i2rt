@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class _GripperHWConfig:
-    joint6_pos: str
-    joint6_quat: str
-    joint6_axis: str
+    mount_pos: str
+    mount_quat: str
+    mount_axis: str
     motor_type: str
     motor_kp: float
     motor_kd: float
@@ -43,15 +43,16 @@ def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
-    j6 = raw["joint6_mount"]
+    # Support both legacy "joint6_mount" and new "last_joint_mount" key
+    j_mount = raw.get("last_joint_mount") or raw["joint6_mount"]
     gripper_limits = raw.get("gripper_limits")
     if gripper_limits is not None:
         gripper_limits = tuple(gripper_limits)
 
     return _GripperHWConfig(
-        joint6_pos=j6["pos"],
-        joint6_quat=j6["quat"],
-        joint6_axis=j6["axis"],
+        mount_pos=j_mount["pos"],
+        mount_quat=j_mount["quat"],
+        mount_axis=j_mount["axis"],
         motor_type=raw["motor_type"],
         motor_kp=float(raw["motor_kp"]),
         motor_kd=float(raw["motor_kd"]),
@@ -103,10 +104,10 @@ def combine_arm_and_gripper_xml(
     """Combine arm and gripper XML files into a single XML string.
 
     Appends the ``<body name="gripper">`` subtree from the gripper XML as a
-    child of the deepest body in the arm's kinematic chain (link6).  The
-    arm XML must contain a ``<body name="link6">`` with ``<joint name="joint6">``;
-    this function sets link6's ``pos``, ``quat``, and joint6's ``axis`` based
-    on the gripper type's YAML config.
+    child of the deepest body in the arm's kinematic chain.  The last body
+    in the arm chain is located dynamically via ``_find_deepest_body``, and
+    its ``pos``, ``quat``, and first joint's ``axis`` are set from the
+    gripper type's YAML config.
 
     Args:
         arm_path: Path to the arm MuJoCo XML file.
@@ -115,7 +116,7 @@ def combine_arm_and_gripper_xml(
         ee_mass: Optional end-effector mass (kg) to override in gripper's inertial.
         ee_inertia: Optional end-effector inertia array. Expected as a flat array of
             10 elements: [ipos(3), quat(4), diaginertia(3)].
-        gripper_type: GripperType enum value. Used to set link6 mounting geometry
+        gripper_type: GripperType enum value. Used to set last-joint mounting geometry
             from the gripper's YAML config.
 
     Returns:
@@ -124,16 +125,17 @@ def combine_arm_and_gripper_xml(
     arm_tree = ET.parse(arm_path)
     arm_root = arm_tree.getroot()
 
-    # Set link6 mounting geometry from gripper config
+    # Set last-joint mounting geometry from gripper config
     if gripper_type is not None:
         cfg = _load_gripper_config(gripper_type.value)
-        link6 = arm_root.find(".//body[@name='link6']")
-        if link6 is not None:
-            link6.set("pos", cfg.joint6_pos)
-            link6.set("quat", cfg.joint6_quat)
-            joint6 = link6.find("joint[@name='joint6']")
-            if joint6 is not None:
-                joint6.set("axis", cfg.joint6_axis)
+        worldbody = arm_root.find("worldbody")
+        if worldbody is not None:
+            last_link = _find_deepest_body(worldbody)
+            last_link.set("pos", cfg.mount_pos)
+            last_link.set("quat", cfg.mount_quat)
+            last_joint = last_link.find("joint")
+            if last_joint is not None:
+                last_joint.set("axis", cfg.mount_axis)
 
     # Resolve arm mesh paths to absolute
     arm_dir = os.path.dirname(os.path.abspath(arm_path))
@@ -585,7 +587,7 @@ class GripperForceLimiter:
 
 def detect_gripper_limits(
     motor_chain: DMChainCanInterface,
-    gripper_index: int = 6,
+    gripper_index: int,
     test_torque: float = 0.2,
     max_duration: float = 2.0,
     position_threshold: float = 0.01,

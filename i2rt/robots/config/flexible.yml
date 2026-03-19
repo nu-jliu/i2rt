@@ -1,5 +1,5 @@
-# Joint6 mounting geometry (moved from gripper XML body attributes)
-joint6_mount:
+# Last-joint mounting geometry (set on the deepest arm link at runtime)
+last_joint_mount:
   pos: "0 -0.0398 0.0412"
   quat: "-9.38186e-07 -4.89455e-06 -0.707107 0.707107"
   axis: "0 0 -1"
