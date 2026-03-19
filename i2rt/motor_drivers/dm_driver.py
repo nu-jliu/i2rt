@@ -407,6 +407,19 @@ class DMChainCanInterface(MotorChain):
                 name=motor_chain_name,
                 use_buffered_reader=use_buffered_reader,
             )
+        # CAN bus bandwidth check with 1.1x safety factor
+        CAN_FRAME_BITS = 130  # approximate bits per CAN 2.0A frame including overhead
+        frames_per_cycle = len(motor_list) * 2  # send + receive per motor
+        bits_per_second = frames_per_cycle * CAN_FRAME_BITS * CONTROL_FREQ
+        max_bits_per_second = bitrate / 1.1
+        if bits_per_second > max_bits_per_second:
+            max_safe_freq = max_bits_per_second / (frames_per_cycle * CAN_FRAME_BITS)
+            logging.warning(
+                f"CAN bus bandwidth exceeded: {bits_per_second:.0f} bps > {max_bits_per_second:.0f} bps "
+                f"(bitrate={bitrate}, motors={len(motor_list)}, freq={CONTROL_FREQ}Hz). "
+                f"Max safe frequency: {max_safe_freq:.0f} Hz"
+            )
+
         self.state = None
         self.state_lock = threading.Lock()
 
@@ -488,9 +501,9 @@ class DMChainCanInterface(MotorChain):
         self._update_absolute_positions(motor_feedback)
         self.state = motor_feedback
         self.running = True
-        logging.info("starting separate thread for control loop")
 
     def start_thread(self) -> None:
+        logging.info("starting separate thread for control loop")
         thread = threading.Thread(target=self._set_torques_and_update_state)
         thread.start()
         time.sleep(0.1)
@@ -537,12 +550,32 @@ class DMChainCanInterface(MotorChain):
 
                     # Update state
                     with self.command_lock:
-                        motor_feedback = self._set_commands(self.commands)
+                        try:
+                            motor_feedback = self._set_commands(self.commands)
+                        except RuntimeError as e:
+                            if "Motor error detected" in str(e):
+                                logging.warning(f"Motor error in control loop, attempting recovery: {e}")
+                                recovered = self._try_recover_motors()
+                                if recovered:
+                                    logging.warning("Motor recovery successful, continuing control loop")
+                                    continue
+                                else:
+                                    self.running = False
+                                    raise
+                            raise
+
                         errors = np.array([motor_feedback[i].error_code != "0x1" for i in range(len(motor_feedback))])
                         if np.any(errors):
+                            logging.warning(f"Motor errors detected in feedback: {errors}")
+                            recovered = self._try_recover_motors(motor_feedback)
+                            if recovered:
+                                logging.warning("Motor recovery successful, continuing control loop")
+                                continue
                             self.running = False
                             logging.error(f"motor errors: {errors}")
-                            raise Exception("motors have errors, stopping control loop")
+                            raise Exception(
+                                "motors have unrecoverable errors after recovery attempts, stopping control loop"
+                            )
 
                     with self.state_lock:
                         self.state = motor_feedback
@@ -558,6 +591,49 @@ class DMChainCanInterface(MotorChain):
                     print(f"DM Error in control loop: {e}")
                     self.running = False
                     raise e
+
+    def _try_recover_motors(self, motor_feedback: Optional[List[MotorInfo]] = None, max_retries: int = 3) -> bool:
+        """Attempt to recover motors that report errors.
+
+        For each motor with an error, clean the error and re-enable.
+        Returns True if ALL motors recovered successfully, False otherwise.
+        """
+        for attempt in range(max_retries):
+            # Determine which motors need recovery
+            if motor_feedback is not None:
+                error_indices = [i for i, fb in enumerate(motor_feedback) if fb.error_code != "0x1"]
+            else:
+                error_indices = list(range(len(self.motor_list)))
+
+            if not error_indices:
+                return True
+
+            for idx in error_indices:
+                motor_id, motor_type = self.motor_list[idx]
+                logging.warning(f"Recovering motor {motor_id} ({motor_type}), attempt {attempt + 1}/{max_retries}")
+                self.motor_interface.clean_error(motor_id)
+                time.sleep(0.003)
+                self.motor_interface.try_receive_message(timeout=0.002)
+                try:
+                    self.motor_interface.motor_on(motor_id, motor_type)
+                except Exception as e:
+                    logging.warning(f"Motor {motor_id} re-enable failed: {e}")
+                    continue
+
+            # Verify recovery by sending commands
+            time.sleep(0.01)
+            try:
+                motor_feedback = self._set_commands(self.commands)
+                if all(fb.error_code == "0x1" for fb in motor_feedback):
+                    logging.warning("All motors recovered successfully")
+                    with self.state_lock:
+                        self.state = motor_feedback
+                        self._update_absolute_positions(motor_feedback)
+                    return True
+            except RuntimeError:
+                continue
+
+        return False
 
     def _set_commands(self, commands: List[MotorCmd]) -> List[MotorInfo]:
         motor_feedback = []

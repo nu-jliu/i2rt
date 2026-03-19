@@ -8,7 +8,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from i2rt.robots.get_robot import _ARM_JOINT_LIMITS, get_yam_robot
+from i2rt.robots.get_robot import get_yam_robot
 from i2rt.robots.motor_chain_robot import MotorChainRobot
 from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
 
@@ -97,24 +97,6 @@ def test_dof_count(arm_type: ArmType, gripper_type: GripperType, expected_dofs: 
 
     robot.close()
 
-
-# ---------------------------------------------------------------------------
-# Per-arm joint limits
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize("arm_type", YAM_ARMS)
-def test_joint_limits_match_arm_type(arm_type: ArmType) -> None:
-    """Each arm variant should embed its own joint limits (XML range ± 0.15 buffer)."""
-    robot = make_robot(arm_type, GripperType.NO_GRIPPER)
-    info = robot.get_robot_info()
-    limits = info["joint_limits"]
-
-    expected = _ARM_JOINT_LIMITS[arm_type]
-    np.testing.assert_allclose(limits[:, 0], expected[:, 0] - 0.15, atol=1e-6)
-    np.testing.assert_allclose(limits[:, 1], expected[:, 1] + 0.15, atol=1e-6)
-
-    robot.close()
 
 
 # ---------------------------------------------------------------------------

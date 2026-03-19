@@ -132,7 +132,9 @@ class MotorChainRobot(Robot):
         self._clip_motor_torque = clip_motor_torque
         self.motor_chain = motor_chain
         self.use_gravity_comp = use_gravity_comp
-        self.gravity_comp_factor = gravity_comp_factor if gravity_comp_factor is not None else np.ones(len(motor_chain))
+        self.gravity_comp_factor = (
+            gravity_comp_factor if gravity_comp_factor is not None else np.ones(len(motor_chain))
+        )
 
         # variables for gripper effort limiting
         self._gripper_index = gripper_index
