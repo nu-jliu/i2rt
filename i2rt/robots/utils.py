@@ -27,6 +27,7 @@ GRIPPER_LINEAR_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_
 GRIPPER_TEACHING_HANDLE_PATH = os.path.join(
     I2RT_ROOT, "robot_models/gripper/yam_teaching_handle/yam_teaching_handle.xml"
 )
+GRIPPER_FLEXIBLE_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/flexible/flexible.xml")
 GRIPPER_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/no_gripper/no_gripper.xml")
 
 
@@ -222,6 +223,7 @@ class GripperType(enum.Enum):
     CRANK_4310 = "crank_4310"  # a 4310 motor with a crank
     LINEAR_3507 = "linear_3507"  # a 3507 motor with a linear actuator
     LINEAR_4310 = "linear_4310"  # a 4310 motor with a linear actuator
+    FLEXIBLE = "flexible"  # a 4310 motor with flexible soft tips
 
     # technically not a gripper
     YAM_TEACHING_HANDLE = "yam_teaching_handle"
@@ -246,13 +248,14 @@ class GripperType(enum.Enum):
         return None
 
     def get_gripper_needs_calibration(self) -> bool:
-        return self in (GripperType.LINEAR_3507, GripperType.LINEAR_4310)
+        return self in (GripperType.LINEAR_3507, GripperType.LINEAR_4310, GripperType.FLEXIBLE)
 
     def get_xml_path(self) -> str:
         _xml_map = {
             GripperType.CRANK_4310: GRIPPER_CRANK_4310_PATH,
             GripperType.LINEAR_3507: GRIPPER_LINEAR_3507_PATH,
             GripperType.LINEAR_4310: GRIPPER_LINEAR_4310_PATH,
+            GripperType.FLEXIBLE: GRIPPER_FLEXIBLE_PATH,
             GripperType.YAM_TEACHING_HANDLE: GRIPPER_TEACHING_HANDLE_PATH,
             GripperType.NO_GRIPPER: GRIPPER_NO_GRIPPER_PATH,
         }
@@ -261,7 +264,7 @@ class GripperType(enum.Enum):
         return _xml_map[self]
 
     def get_motor_kp_kd(self) -> tuple[float, float]:
-        if self in (GripperType.CRANK_4310, GripperType.LINEAR_4310):
+        if self in (GripperType.CRANK_4310, GripperType.LINEAR_4310, GripperType.FLEXIBLE):
             return 20, 0.5
         elif self == GripperType.LINEAR_3507:
             return 10, 0.3
@@ -271,7 +274,7 @@ class GripperType(enum.Enum):
             raise ValueError(f"Unknown gripper type: {self}")
 
     def get_motor_type(self) -> str:
-        if self in (GripperType.CRANK_4310, GripperType.LINEAR_4310):
+        if self in (GripperType.CRANK_4310, GripperType.LINEAR_4310, GripperType.FLEXIBLE):
             return "DM4310"
         elif self == GripperType.LINEAR_3507:
             return "DM3507"
@@ -312,6 +315,17 @@ class GripperType(enum.Enum):
                 ),
             )
         elif self == GripperType.LINEAR_4310:
+            return (
+                0.5,
+                0.3,
+                1.0,
+                partial(
+                    linear_gripper_force_torque_map,
+                    motor_stroke=6.57,
+                    gripper_stroke=0.096,
+                ),
+            )
+        elif self == GripperType.FLEXIBLE:
             return (
                 0.5,
                 0.3,
