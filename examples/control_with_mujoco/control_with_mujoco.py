@@ -17,6 +17,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import argparse
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 from i2rt.robots.get_robot import get_yam_robot
 from i2rt.robots.utils import ArmType, GripperType

@@ -3,7 +3,7 @@
   <size njmax="500" nconmax="100"/>
 
   <asset>
-    <mesh name="joint1"      file="joint1.STL"/>
+    <mesh name="joint1" file="joint1.STL"/>
     <mesh name="joint2_link" file="joint2_link.STL"/>
     <mesh name="joint3_link" file="joint3_link.STL"/>
     <mesh name="joint4_link" file="joint4_link.STL"/>

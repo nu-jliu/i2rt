@@ -1,10 +1,13 @@
 import logging
+import os
 import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, Optional
 
 import numpy as np
+import yaml
 
 from i2rt.motor_drivers.dm_driver import (
     CanInterface,
@@ -20,28 +23,13 @@ from i2rt.robots.utils import (
     combine_arm_and_gripper_xml,
 )
 
-# ---------------------------------------------------------------------------
-# Per-arm joint limits (rad) — match XML joint ranges exactly.
-# A 0.15 rad safety buffer is added at runtime before passing to MotorChainRobot.
-# ---------------------------------------------------------------------------
-_ARM_JOINT_LIMITS: dict[ArmType, np.ndarray] = {
-    ArmType.YAM: np.array(
-        [[-2.618, 3.054], [0.0, 3.65], [0.0, 3.665], [-1.571, 1.571], [-1.571, 1.571], [-2.094, 2.094]]
-    ),
-    ArmType.YAM_PRO: np.array(
-        [[-2.618, 3.054], [0.0, 3.65], [0.0, 3.665], [-1.571, 1.571], [-1.571, 1.571], [-2.094, 2.094]]
-    ),
-    ArmType.YAM_ULTRA: np.array(
-        [[-2.618, 3.054], [0.0, 3.65], [0.0, 3.142], [-1.571, 1.571], [-1.571, 1.571], [-2.094, 2.094]]
-    ),
-    ArmType.BIG_YAM: np.array(
-        [[-2.618, 3.130], [0.0, 3.650], [0.0, 3.130], [-1.650, 1.650], [-1.571, 1.571], [-2.094, 2.094]]
-    ),
-}
+logger = logging.getLogger(__name__)
+
+_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
 
 
 # ---------------------------------------------------------------------------
-# Per-arm hardware config — motor types, polarities, PD gains, gravity factor.
+# Per-arm hardware config — loaded from YAML at runtime.
 # Only covers the 6 arm joints; the gripper motor (0x07) is appended at runtime.
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -53,45 +41,62 @@ class _ArmHWConfig:
     gravity_comp_factor: np.ndarray  # per-joint factor, one per arm joint (6 elements)
 
 
-# YAM / YAM Pro / YAM Ultra: 3xDM4340 (shoulder) + 3xDM4310 (elbow/wrist)
-_YAM_HW = _ArmHWConfig(
-    motor_list=(
-        (0x01, "DM4340"),
-        (0x02, "DM4340"),
-        (0x03, "DM4340"),
-        (0x04, "DM4310"),
-        (0x05, "DM4310"),
-        (0x06, "DM4310"),
-    ),
-    directions=(1, 1, 1, 1, 1, 1),
-    kp=np.array([80.0, 80.0, 80.0, 40.0, 10.0, 10.0]),
-    kd=np.array([5.0, 5.0, 5.0, 1.5, 1.5, 1.5]),
-    gravity_comp_factor=np.full(6, 1.3),
-)
+def _load_arm_config(arm_type: ArmType) -> _ArmHWConfig:
+    """Load arm hardware config from the YAML file for the given arm type."""
+    config_path = os.path.join(_CONFIG_DIR, f"{arm_type.value}.yml")
+    logger.info(f"Loading arm config from {config_path}")
+    with open(config_path) as f:
+        raw = yaml.safe_load(f)
 
-# big_yam: heavier arm - joints 1-2 use DM6248, joints 3-4 use DM4340, joints 5-6 use DM4310.
-# Joint 2 direction is reversed relative to YAM family.
-_BIG_YAM_HW = _ArmHWConfig(
-    motor_list=(
-        (0x01, "DM6248"),
-        (0x02, "DM6248"),
-        (0x03, "DM4340"),
-        (0x04, "DM4340"),
-        (0x05, "DM4310"),
-        (0x06, "DM4310"),
-    ),
-    directions=(1, -1, 1, 1, 1, 1),
-    kp=np.array([80.0, 80.0, 80.0, 40.0, 40.0, 10.0]),
-    kd=np.array([5.0, 5.0, 5.0, 3.0, 1.5, 1.5]),
-    gravity_comp_factor=np.full(6, 1.0),
-)
+    motor_list = tuple(tuple(m) for m in raw["motor_list"])
+    directions = tuple(raw["directions"])
+    kp = np.array(raw["kp"], dtype=float)
+    kd = np.array(raw["kd"], dtype=float)
+    gravity_comp_factor = np.array(raw["gravity_comp_factor"], dtype=float)
 
-_ARM_HW_CONFIGS: dict[ArmType, _ArmHWConfig] = {
-    ArmType.YAM: _YAM_HW,
-    ArmType.YAM_PRO: _YAM_HW,
-    ArmType.YAM_ULTRA: _YAM_HW,
-    ArmType.BIG_YAM: _BIG_YAM_HW,
-}
+    logger.info(f"  motor_list:          {motor_list}")
+    logger.info(f"  directions:          {directions}")
+    logger.info(f"  kp:                  {kp}")
+    logger.info(f"  kd:                  {kd}")
+    logger.info(f"  gravity_comp_factor: {gravity_comp_factor}")
+
+    return _ArmHWConfig(
+        motor_list=motor_list,
+        directions=directions,
+        kp=kp,
+        kd=kd,
+        gravity_comp_factor=gravity_comp_factor,
+    )
+
+
+def _load_joint_limits_from_xml(*xml_paths: str) -> np.ndarray:
+    """Parse joint limits (range attributes) from one or more XML files.
+
+    Collects all ``<joint name="jointN" range="lo hi">`` elements across the
+    given XML files.  Returns an (N, 2) array of [lower, upper] limits,
+    ordered by joint name (joint1, joint2, ...).  Duplicate joint names are
+    ignored (first occurrence wins).
+    """
+    seen: set[str] = set()
+    joints: list[tuple[str, float, float]] = []
+    for xml_path in xml_paths:
+        logger.info(f"Loading joint limits from XML: {xml_path}")
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+        for joint_elem in root.iter("joint"):
+            name = joint_elem.get("name", "")
+            range_str = joint_elem.get("range")
+            if range_str and name.startswith("joint") and name not in seen:
+                lo, hi = (float(x) for x in range_str.split())
+                joints.append((name, lo, hi))
+                seen.add(name)
+
+    joints.sort(key=lambda x: x[0])
+    limits = np.array([[lo, hi] for _, lo, hi in joints])
+    logger.info(f"  joint limits ({len(joints)} joints):")
+    for name, lo, hi in joints:
+        logger.info(f"    {name}: [{lo:.5f}, {hi:.5f}]")
+    return limits
 
 
 def get_encoder_chain(can_interface: CanInterface) -> EncoderChain:
@@ -127,14 +132,17 @@ def get_yam_robot(
     with_gripper = gripper_type not in (GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER)
     with_teaching_handle = gripper_type == GripperType.YAM_TEACHING_HANDLE
 
-    hw = _ARM_HW_CONFIGS[arm_type]
+    hw = _load_arm_config(arm_type)
     effective_gravity_comp = hw.gravity_comp_factor if gravity_comp_factor is None else gravity_comp_factor
     if with_gripper:
         effective_gravity_comp = np.append(effective_gravity_comp, 1.0)
 
     model_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia)
 
-    joint_limits = _ARM_JOINT_LIMITS[arm_type].copy()
+    # Load limits for motor-driven joints only (arm joints + wrist joint6 from gripper XML).
+    all_joint_limits = _load_joint_limits_from_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
+    n_arm_joints = len(hw.motor_list)
+    joint_limits = all_joint_limits[:n_arm_joints]
     joint_limits[:, 0] -= 0.15  # safety buffer
     joint_limits[:, 1] += 0.15
 

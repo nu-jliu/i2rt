@@ -491,8 +491,6 @@ class DMChainCanInterface(MotorChain):
         logging.info("starting separate thread for control loop")
 
     def start_thread(self) -> None:
-        # clean error again for motor with timeout enabled
-        self._motor_on()
         thread = threading.Thread(target=self._set_torques_and_update_state)
         thread.start()
         time.sleep(0.1)
@@ -640,6 +638,7 @@ class DMChainCanInterface(MotorChain):
 
     def close(self) -> None:
         self.running = False
+        self.motor_interface.close()
 
 
 class MultiDMChainCanInterface(MotorChain):
