@@ -15,6 +15,7 @@ and dragging the mocap target updates the sliders via IK.
 See examples/control_with_mujoco/ for a runnable entry-point and README.
 """
 
+import logging
 import os
 import tempfile
 import time
@@ -29,6 +30,8 @@ import numpy as np
 from i2rt.robots.kinematics import Kinematics
 from i2rt.robots.motor_chain_robot import MotorChainRobot
 from i2rt.robots.robot import Robot
+
+logger = logging.getLogger(__name__)
 
 
 class Mode(Enum):
@@ -62,11 +65,13 @@ class MujocoControlInterface:
         xml_path: str,
         ee_site: str = "grasp_site",
         dt: float = 0.02,
+        log_torques: bool = False,
     ):
         self._robot = robot
         self._ee_site = ee_site
         self._dt = dt
         self._mode = Mode.VIS
+        self._torque_logging = log_torques
 
         n_dofs = robot.num_dofs()
         robot_info = robot.get_robot_info() if hasattr(robot, "get_robot_info") else {}
@@ -118,8 +123,9 @@ class MujocoControlInterface:
         robot: MotorChainRobot,
         ee_site: str = "grasp_site",
         dt: float = 0.02,
+        log_torques: bool = False,
     ) -> "MujocoControlInterface":
-        return cls(robot, robot.xml_path, ee_site, dt)
+        return cls(robot, robot.xml_path, ee_site, dt, log_torques=log_torques)
 
     # ---- model construction ---------------------------------------------------
 
@@ -406,6 +412,44 @@ class MujocoControlInterface:
             pressed = bool(buttons[idx]) if (buttons and idx < len(buttons)) else False
             self._model.geom_rgba[geom_id] = _BTN_ON_RGBA if pressed else _BTN_OFF_RGBA
 
+    # ---- torque logging -------------------------------------------------------
+
+    def _compute_sim_torques(self) -> np.ndarray:
+        """Compute gravity-compensation torques via MuJoCo inverse dynamics.
+
+        Sets velocity and acceleration to zero so the returned torques are
+        exactly the forces needed to hold the current pose against gravity.
+        """
+        inv_data = mujoco.MjData(self._model)
+        inv_data.qpos[:] = self._data.qpos[:]
+        inv_data.qvel[:] = 0.0
+        inv_data.qacc[:] = 0.0
+        mujoco.mj_inverse(self._model, inv_data)
+        # qfrc_inverse has one entry per DoF
+        return inv_data.qfrc_inverse[: self._n_arm].copy()
+
+    def _log_torques(self) -> None:
+        """Log motor torques — real readings or simulated inverse-dynamics torques.
+
+        In real mode, also computes the required (inverse-dynamics) torques and
+        logs the difference so the operator can spot discrepancies.
+        """
+        required = self._compute_sim_torques()
+        if self._is_sim:
+            torque_str = ", ".join(f"j{i+1}={t:+.4f}" for i, t in enumerate(required))
+            logger.info("[sim_torque] %s", torque_str)
+        else:
+            obs = self._robot.get_observations()
+            actual = obs["joint_eff"]
+            n = min(len(actual), len(required))
+            diff = actual[:n] - required[:n]
+            actual_str = ", ".join(f"j{i+1}={t:+.4f}" for i, t in enumerate(actual))
+            required_str = ", ".join(f"j{i+1}={t:+.4f}" for i, t in enumerate(required))
+            diff_str = ", ".join(f"j{i+1}={d:+.4f}" for i, d in enumerate(diff))
+            logger.info("[motor_torque] %s", actual_str)
+            logger.info("[required_torque] %s", required_str)
+            logger.info("[torque_diff] %s", diff_str)
+
     # ---- key callback ---------------------------------------------------------
 
     def _on_key(self, key: int) -> None:
@@ -443,6 +487,8 @@ class MujocoControlInterface:
             try:
                 while viewer.is_running():
                     self._mirror_robot()
+                    if self._torque_logging:
+                        self._log_torques()
                     self._update_button_indicators()
 
                     if self._mode is Mode.VIS:
