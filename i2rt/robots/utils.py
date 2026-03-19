@@ -5,14 +5,61 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 from copy import deepcopy
+from dataclasses import dataclass
 from functools import partial
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
+import yaml
 
 from i2rt.motor_drivers.dm_driver import DMChainCanInterface
 
 I2RT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Per-gripper hardware config — loaded from YAML at runtime.
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class _GripperHWConfig:
+    joint6_pos: str
+    joint6_quat: str
+    joint6_axis: str
+    motor_type: str
+    motor_kp: float
+    motor_kd: float
+    gripper_limits: Optional[tuple[float, float]]
+    needs_calibration: bool
+    limiter_params: Optional[dict]  # raw limiter section from YAML
+
+
+def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
+    """Load gripper hardware config from the YAML file for the given gripper type."""
+    config_path = os.path.join(_CONFIG_DIR, f"{gripper_type_value}.yml")
+    logger.info(f"Loading gripper config from {config_path}")
+    with open(config_path) as f:
+        raw = yaml.safe_load(f)
+
+    j6 = raw["joint6_mount"]
+    gripper_limits = raw.get("gripper_limits")
+    if gripper_limits is not None:
+        gripper_limits = tuple(gripper_limits)
+
+    return _GripperHWConfig(
+        joint6_pos=j6["pos"],
+        joint6_quat=j6["quat"],
+        joint6_axis=j6["axis"],
+        motor_type=raw["motor_type"],
+        motor_kp=float(raw["motor_kp"]),
+        motor_kd=float(raw["motor_kd"]),
+        gripper_limits=gripper_limits,
+        needs_calibration=bool(raw["needs_calibration"]),
+        limiter_params=raw.get("limiter"),
+    )
+
 
 # Arm XML paths
 ARM_YAM_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/yam/yam.xml")
@@ -51,15 +98,15 @@ def combine_arm_and_gripper_xml(
     gripper_path: str,
     ee_mass: Optional[float] = None,
     ee_inertia: Optional[np.ndarray] = None,
+    gripper_type: Optional["GripperType"] = None,
 ) -> str:
     """Combine arm and gripper XML files into a single XML string.
 
     Appends the ``<body name="gripper">`` subtree from the gripper XML as a
-    child of the deepest body in the arm's kinematic chain.  If the arm
-    already contains a ``<body name="gripper">`` (legacy format), it is
-    replaced instead.  If *ee_mass* or *ee_inertia* are provided, update the
-    inertial properties of the resulting gripper body.  Returns path to
-    combined XML in ``/tmp/``.
+    child of the deepest body in the arm's kinematic chain (link6).  The
+    arm XML must contain a ``<body name="link6">`` with ``<joint name="joint6">``;
+    this function sets link6's ``pos``, ``quat``, and joint6's ``axis`` based
+    on the gripper type's YAML config.
 
     Args:
         arm_path: Path to the arm MuJoCo XML file.
@@ -68,12 +115,25 @@ def combine_arm_and_gripper_xml(
         ee_mass: Optional end-effector mass (kg) to override in gripper's inertial.
         ee_inertia: Optional end-effector inertia array. Expected as a flat array of
             10 elements: [ipos(3), quat(4), diaginertia(3)].
+        gripper_type: GripperType enum value. Used to set link6 mounting geometry
+            from the gripper's YAML config.
 
     Returns:
         Path to the combined XML file written to /tmp/.
     """
     arm_tree = ET.parse(arm_path)
     arm_root = arm_tree.getroot()
+
+    # Set link6 mounting geometry from gripper config
+    if gripper_type is not None:
+        cfg = _load_gripper_config(gripper_type.value)
+        link6 = arm_root.find(".//body[@name='link6']")
+        if link6 is not None:
+            link6.set("pos", cfg.joint6_pos)
+            link6.set("quat", cfg.joint6_quat)
+            joint6 = link6.find("joint[@name='joint6']")
+            if joint6 is not None:
+                joint6.set("axis", cfg.joint6_axis)
 
     # Resolve arm mesh paths to absolute
     arm_dir = os.path.dirname(os.path.abspath(arm_path))
@@ -243,12 +303,12 @@ class GripperType(enum.Enum):
         return [gripper.value for gripper in GripperType]
 
     def get_gripper_limits(self) -> Optional[tuple[float, float]]:
-        if self == GripperType.CRANK_4310:
-            return 0.0, -2.7
-        return None
+        cfg = _load_gripper_config(self.value)
+        return cfg.gripper_limits
 
     def get_gripper_needs_calibration(self) -> bool:
-        return self in (GripperType.LINEAR_3507, GripperType.LINEAR_4310, GripperType.FLEXIBLE)
+        cfg = _load_gripper_config(self.value)
+        return cfg.needs_calibration
 
     def get_xml_path(self) -> str:
         _xml_map = {
@@ -264,24 +324,12 @@ class GripperType(enum.Enum):
         return _xml_map[self]
 
     def get_motor_kp_kd(self) -> tuple[float, float]:
-        if self in (GripperType.CRANK_4310, GripperType.LINEAR_4310, GripperType.FLEXIBLE):
-            return 20, 0.5
-        elif self == GripperType.LINEAR_3507:
-            return 10, 0.3
-        elif self in (GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER):
-            return -1.0, -1.0
-        else:
-            raise ValueError(f"Unknown gripper type: {self}")
+        cfg = _load_gripper_config(self.value)
+        return cfg.motor_kp, cfg.motor_kd
 
     def get_motor_type(self) -> str:
-        if self in (GripperType.CRANK_4310, GripperType.LINEAR_4310, GripperType.FLEXIBLE):
-            return "DM4310"
-        elif self == GripperType.LINEAR_3507:
-            return "DM3507"
-        elif self in (GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER):
-            return ""
-        else:
-            raise ValueError(f"Unknown gripper type: {self}")
+        cfg = _load_gripper_config(self.value)
+        return cfg.motor_type
 
     def get_gripper_limiter_params(self) -> tuple[float, float, float, callable]:
         """
@@ -290,56 +338,36 @@ class GripperType(enum.Enum):
         sign: float,
         gripper_force_torque_map: callable,
         """
-        if self == GripperType.CRANK_4310:
-            return (
-                0.5,
-                0.2,
-                1.0,
-                partial(
-                    zero_linkage_crank_gripper_force_torque_map,
-                    motor_reading_to_crank_angle=lambda x: -x + 0.174,
-                    gripper_close_angle=8 / 180.0 * np.pi,
-                    gripper_open_angle=170 / 180.0 * np.pi,
-                    gripper_stroke=0.071,  # unit in meter
-                ),
-            )
-        elif self == GripperType.LINEAR_3507:
-            return (
-                0.5,
-                0.3,
-                1.0,
-                partial(
-                    linear_gripper_force_torque_map,
-                    motor_stroke=6.57,
-                    gripper_stroke=0.096,
-                ),
-            )
-        elif self == GripperType.LINEAR_4310:
-            return (
-                0.5,
-                0.3,
-                1.0,
-                partial(
-                    linear_gripper_force_torque_map,
-                    motor_stroke=6.57,
-                    gripper_stroke=0.096,
-                ),
-            )
-        elif self == GripperType.FLEXIBLE:
-            return (
-                0.5,
-                0.3,
-                1.0,
-                partial(
-                    linear_gripper_force_torque_map,
-                    motor_stroke=6.57,
-                    gripper_stroke=0.096,
-                ),
-            )
-        elif self in (GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER):
+        cfg = _load_gripper_config(self.value)
+        lim = cfg.limiter_params
+        if lim is None:
             return -1.0, -1.0, -1.0, None
+
+        map_type = lim["force_torque_map"]
+        if map_type == "linear":
+            fn = partial(
+                linear_gripper_force_torque_map,
+                motor_stroke=lim["motor_stroke"],
+                gripper_stroke=lim["gripper_stroke"],
+            )
+        elif map_type == "crank":
+            offset = lim["motor_reading_offset"]
+            fn = partial(
+                zero_linkage_crank_gripper_force_torque_map,
+                motor_reading_to_crank_angle=lambda x, o=offset: -x + o,
+                gripper_close_angle=lim["gripper_close_angle"],
+                gripper_open_angle=lim["gripper_open_angle"],
+                gripper_stroke=lim["gripper_stroke"],
+            )
         else:
-            raise ValueError(f"Unknown gripper type: {self}")
+            raise ValueError(f"Unknown force_torque_map type: {map_type}")
+
+        return (
+            lim["clog_force_threshold"],
+            lim["clog_speed_threshold"],
+            lim["sign"],
+            fn,
+        )
 
 
 class JointMapper:

@@ -125,7 +125,7 @@ def test_big_yam_no_gripper_is_arm_only() -> None:
 @pytest.mark.parametrize("gripper_type", YAM_GRIPPERS)
 def test_combined_xml_loads_in_mujoco(arm_type: ArmType, gripper_type: GripperType) -> None:
     """The combined arm+gripper XML must be loadable by MuJoCo."""
-    xml_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
+    xml_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), gripper_type=gripper_type)
     model = mujoco.MjModel.from_xml_path(xml_path)
 
     assert model.nq > 0
@@ -139,7 +139,7 @@ def test_combined_xml_loads_in_mujoco(arm_type: ArmType, gripper_type: GripperTy
 
 def _get_ee_site_axes(arm_type: ArmType, gripper_type: GripperType) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load combined model at qpos=0 and return grasp_site (x, y, z) world axes."""
-    xml_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
+    xml_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), gripper_type=gripper_type)
     model = mujoco.MjModel.from_xml_path(xml_path)
     data = mujoco.MjData(model)
     data.qpos[:] = 0

@@ -1,0 +1,23 @@
+# Joint6 mounting geometry (moved from gripper XML body attributes)
+joint6_mount:
+  pos: "0 -0.0398 0.0412"
+  quat: "-9.38186e-07 -4.89455e-06 -0.707107 0.707107"
+  axis: "0 0 -1"
+
+# Gripper motor config
+motor_type: "DM4310"
+motor_kp: 20.0
+motor_kd: 0.5
+
+# Gripper limits (null = needs calibration)
+gripper_limits: null
+needs_calibration: true
+
+# Force limiter config
+limiter:
+  clog_force_threshold: 0.5
+  clog_speed_threshold: 0.3
+  sign: 1.0
+  force_torque_map: "linear"
+  motor_stroke: 6.57
+  gripper_stroke: 0.096

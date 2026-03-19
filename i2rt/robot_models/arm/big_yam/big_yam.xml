@@ -39,7 +39,11 @@
                    different kinematic convention used by the big_yam chain. -->
               <body name="flange" pos="0 0 0" quat="0 0.707107 -0.707107 0">
                 <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9"/>
-                <!-- gripper is appended at runtime by combine_arm_and_gripper_xml() -->
+                <body name="link6" pos="0 0 0" quat="1 0 0 0">
+                  <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9"/>
+                  <joint name="joint6" pos="0 0 0" axis="0 0 1" range="-2.0944 2.0944" actuatorfrcrange="-10 10"/>
+                  <!-- gripper is appended at runtime by combine_arm_and_gripper_xml() -->
+                </body>
               </body>
             </body>
           </body>

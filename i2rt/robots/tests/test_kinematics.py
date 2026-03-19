@@ -2,12 +2,12 @@ import numpy as np
 import pytest
 
 from i2rt.robots.kinematics import Kinematics
-from i2rt.robots.utils import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, combine_arm_and_gripper_xml
+from i2rt.robots.utils import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, GripperType, combine_arm_and_gripper_xml
 
 
 @pytest.fixture
 def kinematics_yam() -> Kinematics:
-    combined_path = combine_arm_and_gripper_xml(ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH)
+    combined_path = combine_arm_and_gripper_xml(ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, gripper_type=GripperType.NO_GRIPPER)
     return Kinematics(combined_path, "grasp_site")
 
 

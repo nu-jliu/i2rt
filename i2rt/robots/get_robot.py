@@ -137,7 +137,7 @@ def get_yam_robot(
     if with_gripper:
         effective_gravity_comp = np.append(effective_gravity_comp, 1.0)
 
-    model_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia)
+    model_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia, gripper_type=gripper_type)
 
     # Load limits for motor-driven joints only (arm joints + wrist joint6 from gripper XML).
     all_joint_limits = _load_joint_limits_from_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())
