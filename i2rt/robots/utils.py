@@ -62,21 +62,18 @@ def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
     )
 
 
-# Arm XML paths
-ARM_YAM_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/yam/yam.xml")
-ARM_YAM_PRO_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/yam_pro/yam_pro.xml")
-ARM_YAM_ULTRA_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/yam_ultra/yam_ultra.xml")
-ARM_BIG_YAM_XML_PATH = os.path.join(I2RT_ROOT, "robot_models/arm/big_yam/big_yam.xml")
-
-# Gripper XML paths
-GRIPPER_CRANK_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/crank_4310/crank_4310.xml")
-GRIPPER_LINEAR_3507_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_3507/linear_3507.xml")
-GRIPPER_LINEAR_4310_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/linear_4310/linear_4310.xml")
-GRIPPER_TEACHING_HANDLE_PATH = os.path.join(
-    I2RT_ROOT, "robot_models/gripper/yam_teaching_handle/yam_teaching_handle.xml"
+from i2rt.robot_models import (
+    ARM_BIG_YAM_XML_PATH,
+    ARM_YAM_PRO_XML_PATH,
+    ARM_YAM_ULTRA_XML_PATH,
+    ARM_YAM_XML_PATH,
+    GRIPPER_CRANK_4310_PATH,
+    GRIPPER_FLEXIBLE_PATH,
+    GRIPPER_LINEAR_3507_PATH,
+    GRIPPER_LINEAR_4310_PATH,
+    GRIPPER_NO_GRIPPER_PATH,
+    GRIPPER_TEACHING_HANDLE_PATH,
 )
-GRIPPER_FLEXIBLE_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/flexible/flexible.xml")
-GRIPPER_NO_GRIPPER_PATH = os.path.join(I2RT_ROOT, "robot_models/gripper/no_gripper/no_gripper.xml")
 
 
 def _find_deepest_body(element: ET.Element) -> ET.Element:

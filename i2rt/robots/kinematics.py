@@ -108,7 +108,8 @@ class Kinematics:
 
 
 def main() -> None:
-    from i2rt.robots.utils import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, GripperType, combine_arm_and_gripper_xml
+    from i2rt.robot_models import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH
+    from i2rt.robots.utils import GripperType, combine_arm_and_gripper_xml
 
     combined_path = combine_arm_and_gripper_xml(ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, gripper_type=GripperType.NO_GRIPPER)
     mj_model = Kinematics(combined_path, "grasp_site")

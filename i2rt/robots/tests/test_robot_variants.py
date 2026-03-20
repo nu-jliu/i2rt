@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from i2rt.robots.get_robot import get_yam_robot
-from i2rt.robots.motor_chain_robot import MotorChainRobot
+from i2rt.robots.robot import Robot
 from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
 
 # All YAM-family arm variants
@@ -35,7 +35,7 @@ YAM_GRIPPERS = [
 # ---------------------------------------------------------------------------
 
 
-def make_robot(arm_type: ArmType, gripper_type: GripperType) -> MotorChainRobot:
+def make_robot(arm_type: ArmType, gripper_type: GripperType) -> Robot:
     """Create a SimRobot for the given arm/gripper pair."""
     return get_yam_robot(arm_type=arm_type, gripper_type=gripper_type, sim=True)
 

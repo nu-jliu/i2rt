@@ -1,8 +1,9 @@
 import numpy as np
 import pytest
 
+from i2rt.robot_models import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH
 from i2rt.robots.kinematics import Kinematics
-from i2rt.robots.utils import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, GripperType, combine_arm_and_gripper_xml
+from i2rt.robots.utils import GripperType, combine_arm_and_gripper_xml
 
 
 @pytest.fixture
