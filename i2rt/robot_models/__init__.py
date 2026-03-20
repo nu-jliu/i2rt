@@ -15,5 +15,5 @@ GRIPPER_LINEAR_4310_PATH = os.path.join(_ROBOT_MODELS_ROOT, "gripper/linear_4310
 GRIPPER_TEACHING_HANDLE_PATH = os.path.join(
     _ROBOT_MODELS_ROOT, "gripper/yam_teaching_handle/yam_teaching_handle.xml"
 )
-GRIPPER_FLEXIBLE_PATH = os.path.join(_ROBOT_MODELS_ROOT, "gripper/flexible/flexible.xml")
+GRIPPER_FLEXIBLE_4310_PATH = os.path.join(_ROBOT_MODELS_ROOT, "gripper/flexible_4310/flexible_4310.xml")
 GRIPPER_NO_GRIPPER_PATH = os.path.join(_ROBOT_MODELS_ROOT, "gripper/no_gripper/no_gripper.xml")

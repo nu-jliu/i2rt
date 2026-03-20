@@ -33,6 +33,7 @@ class _GripperHWConfig:
     motor_kd: float
     gripper_limits: Optional[tuple[float, float]]
     needs_calibration: bool
+    motor_direction: int  # motor polarity for the gripper (+1 or -1)
     limiter_params: Optional[dict]  # raw limiter section from YAML
 
 
@@ -58,6 +59,7 @@ def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
         motor_kd=float(raw["motor_kd"]),
         gripper_limits=gripper_limits,
         needs_calibration=bool(raw["needs_calibration"]),
+        motor_direction=int(raw.get("motor_direction", 1)),
         limiter_params=raw.get("limiter"),
     )
 
@@ -68,7 +70,7 @@ from i2rt.robot_models import (
     ARM_YAM_ULTRA_XML_PATH,
     ARM_YAM_XML_PATH,
     GRIPPER_CRANK_4310_PATH,
-    GRIPPER_FLEXIBLE_PATH,
+    GRIPPER_FLEXIBLE_4310_PATH,
     GRIPPER_LINEAR_3507_PATH,
     GRIPPER_LINEAR_4310_PATH,
     GRIPPER_NO_GRIPPER_PATH,
@@ -282,7 +284,7 @@ class GripperType(enum.Enum):
     CRANK_4310 = "crank_4310"  # a 4310 motor with a crank
     LINEAR_3507 = "linear_3507"  # a 3507 motor with a linear actuator
     LINEAR_4310 = "linear_4310"  # a 4310 motor with a linear actuator
-    FLEXIBLE = "flexible"  # a 4310 motor with flexible soft tips
+    FLEXIBLE_4310 = "flexible_4310"  # a 4310 motor with flexible soft tips
 
     # technically not a gripper
     YAM_TEACHING_HANDLE = "yam_teaching_handle"
@@ -314,7 +316,7 @@ class GripperType(enum.Enum):
             GripperType.CRANK_4310: GRIPPER_CRANK_4310_PATH,
             GripperType.LINEAR_3507: GRIPPER_LINEAR_3507_PATH,
             GripperType.LINEAR_4310: GRIPPER_LINEAR_4310_PATH,
-            GripperType.FLEXIBLE: GRIPPER_FLEXIBLE_PATH,
+            GripperType.FLEXIBLE_4310: GRIPPER_FLEXIBLE_4310_PATH,
             GripperType.YAM_TEACHING_HANDLE: GRIPPER_TEACHING_HANDLE_PATH,
             GripperType.NO_GRIPPER: GRIPPER_NO_GRIPPER_PATH,
         }
@@ -329,6 +331,10 @@ class GripperType(enum.Enum):
     def get_motor_type(self) -> str:
         cfg = _load_gripper_config(self.value)
         return cfg.motor_type
+
+    def get_motor_direction(self) -> int:
+        cfg = _load_gripper_config(self.value)
+        return cfg.motor_direction
 
     def get_gripper_limiter_params(self) -> tuple[float, float, float, callable]:
         """
