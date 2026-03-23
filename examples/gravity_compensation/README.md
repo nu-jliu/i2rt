@@ -38,5 +38,4 @@ uv run python examples/gravity_compensation/gravity_compensation.py --arm yam_pr
 | `--gripper`      | `linear_4310`  | Gripper type (`linear_4310`, `linear_3507`, `crank_4310`, `flexible_4310`, `yam_teaching_handle`, `no_gripper`) |
 | `--channel`      | `can0`         | CAN channel (ignored in sim mode)                |
 | `--sim`          | off            | Use simulated robot                              |
-| `--dt`           | `0.02`         | Loop timestep in seconds                         |
 | `--log-torques`  | off            | Display gravity compensation torques per joint   |

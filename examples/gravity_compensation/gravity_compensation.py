@@ -91,7 +91,6 @@ if __name__ == "__main__":
     parser.add_argument("--gripper", type=str, default="linear_4310", choices=gripper_choices)
     parser.add_argument("--channel", type=str, default="can0", help="CAN channel")
     parser.add_argument("--sim", action="store_true", help="Use SimRobot")
-    parser.add_argument("--dt", type=float, default=0.02, help="Loop timestep (s)")
     parser.add_argument("--log-torques", action="store_true", help="Log gravity compensation torques each iteration")
     args = parser.parse_args()
 
@@ -146,7 +145,6 @@ if __name__ == "__main__":
             table = _format_state_table(joint_pos, joint_vel, joint_eff, torques, gripper_pos, loop_freq)
             print("\033[2J\033[H" + table, flush=True)
 
-            time.sleep(args.dt)
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
