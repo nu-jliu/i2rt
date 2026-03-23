@@ -428,27 +428,42 @@ class MujocoControlInterface:
         # qfrc_inverse has one entry per DoF
         return inv_data.qfrc_inverse[: self._n_arm].copy()
 
-    def _log_torques(self) -> None:
-        """Log motor torques — real readings or simulated inverse-dynamics torques.
+    def _format_torque_table(
+        self,
+        required: np.ndarray,
+        actual: np.ndarray,
+        diff: np.ndarray,
+    ) -> str:
+        """Build a Unicode box-drawing table for torque data."""
+        lw, cw = 7, 16  # label width, column width
+        mode = "SIM" if self._is_sim else "REAL"
+        top = f"┌{'─' * lw}┬{'─' * cw}┬{'─' * cw}┬{'─' * cw}┐"
+        hdr = f"│{'Joint':^{lw}}│{'Required (Nm)':^{cw}}│{'Actual (Nm)':^{cw}}│{'Diff (Nm)':^{cw}}│"
+        sep = f"├{'─' * lw}┼{'─' * cw}┼{'─' * cw}┼{'─' * cw}┤"
+        btm = f"└{'─' * lw}┴{'─' * cw}┴{'─' * cw}┴{'─' * cw}┘"
+        rows = [f" Torque Monitor [{mode}]", top, hdr, sep]
+        for i in range(len(required)):
+            rows.append(
+                f"│{f'j{i+1}':^{lw}}"
+                f"│{required[i]:>+12.4f}    "
+                f"│{actual[i]:>+12.4f}    "
+                f"│{diff[i]:>+12.4f}    │"
+            )
+        rows.append(btm)
+        return "\n".join(rows)
 
-        In real mode, also computes the required (inverse-dynamics) torques and
-        logs the difference so the operator can spot discrepancies.
-        """
+    def _log_torques(self) -> None:
+        """Display torque table, clearing the console each iteration."""
         required = self._compute_sim_torques()
         if self._is_sim:
-            torque_str = ", ".join(f"j{i+1}={t:+.4f}" for i, t in enumerate(required))
-            logger.info("[sim_torque] %s", torque_str)
+            actual = np.zeros(self._n_arm)
         else:
             obs = self._robot.get_observations()
-            actual = obs["joint_eff"]
-            n = min(len(actual), len(required))
-            diff = actual[:n] - required[:n]
-            actual_str = ", ".join(f"j{i+1}={t:+.4f}" for i, t in enumerate(actual))
-            required_str = ", ".join(f"j{i+1}={t:+.4f}" for i, t in enumerate(required))
-            diff_str = ", ".join(f"j{i+1}={d:+.4f}" for i, d in enumerate(diff))
-            logger.info("[motor_torque] %s", actual_str)
-            logger.info("[required_torque] %s", required_str)
-            logger.info("[torque_diff] %s", diff_str)
+            actual = obs["joint_eff"][: self._n_arm]
+        n = min(len(actual), len(required))
+        diff = actual[:n] - required[:n]
+        table = self._format_torque_table(required[:n], actual[:n], diff)
+        print("\033[2J\033[H" + table, flush=True)
 
     # ---- key callback ---------------------------------------------------------
 
