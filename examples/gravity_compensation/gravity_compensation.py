@@ -34,6 +34,7 @@ def _format_state_table(
     joint_eff: np.ndarray,
     torques: np.ndarray | None,
     gripper_pos: float | None,
+    loop_freq: float | None,
 ) -> str:
     """Build a Unicode box-drawing table for joint state (and optional torques)."""
     has_torques = torques is not None
@@ -49,7 +50,8 @@ def _format_state_table(
     sep = f"├{'─' * lw}" + "".join(f"┼{'─' * cw}" for _ in cols) + "┤"
     btm = f"└{'─' * lw}" + "".join(f"┴{'─' * cw}" for _ in cols) + "┘"
 
-    rows = [" Gravity Compensation", top, hdr, sep]
+    freq_str = f"  [{loop_freq:.1f} Hz]" if loop_freq is not None else ""
+    rows = [f" Gravity Compensation{freq_str}", top, hdr, sep]
     for i in range(len(joint_pos)):
         line = f"│{f'j{i+1}':^{lw}}"
         line += f"│{joint_pos[i]:>+12.4f}    "
@@ -113,8 +115,17 @@ if __name__ == "__main__":
 
     print("Gravity compensation active. Press Ctrl+C to stop.")
 
+    loop_freq = None
+    last_time = time.monotonic()
+
     try:
         while True:
+            now = time.monotonic()
+            dt_actual = now - last_time
+            last_time = now
+            if dt_actual > 0:
+                loop_freq = 1.0 / dt_actual
+
             obs = robot.get_observations()
             joint_pos = obs["joint_pos"]
             joint_vel = obs["joint_vel"]
@@ -132,7 +143,7 @@ if __name__ == "__main__":
                 elif hasattr(robot, "get_motor_torques"):
                     torques = robot.get_motor_torques()
 
-            table = _format_state_table(joint_pos, joint_vel, joint_eff, torques, gripper_pos)
+            table = _format_state_table(joint_pos, joint_vel, joint_eff, torques, gripper_pos, loop_freq)
             print("\033[2J\033[H" + table, flush=True)
 
             time.sleep(args.dt)
