@@ -169,14 +169,10 @@ def get_yam_robot(
     if sim:
         from i2rt.robots.sim_robot import SimRobot
 
-        # In sim mode, grippers that need calibration have no limits yet —
-        # derive from the MuJoCo XML joint range so the slider maps correctly.
+        # In sim mode, grippers that need calibration have no limits yet — use [0, 1] default.
         sim_gripper_limits = gripper_limits
         if with_gripper and sim_gripper_limits is None:
-            if n_arm_joints < len(all_joint_limits):
-                sim_gripper_limits = all_joint_limits[n_arm_joints]
-            else:
-                sim_gripper_limits = np.array([0.0, 1.0])
+            sim_gripper_limits = np.array([0.0, 1.0])
 
         return SimRobot(
             xml_path=model_path,

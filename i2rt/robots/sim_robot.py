@@ -38,14 +38,37 @@ class SimRobot(Robot):
         self._model = mujoco.MjModel.from_xml_path(xml_path)
         self._data = mujoco.MjData(self._model)
 
+        # Build mapping from [0, 1] command space to actual MuJoCo joint range
+        # for the gripper joint.  This is needed because the command convention
+        # is 0 = closed, 1 = open, but the underlying MuJoCo joint range may
+        # differ (e.g. [-0.048, 0] for flexible grippers).
+        self._gripper_qpos_range = None
+        if gripper_index is not None and gripper_index < self._model.njnt:
+            jnt_lo, jnt_hi = self._model.jnt_range[gripper_index]
+            if jnt_lo != 0.0 or jnt_hi != 1.0:
+                self._gripper_qpos_range = (float(jnt_lo), float(jnt_hi))
+
         self._lock = threading.Lock()
         self._qpos = np.zeros(n_dofs) if initial_qpos is None else np.array(initial_qpos, dtype=float)
         self._qvel = np.zeros(n_dofs)
 
         # Push the initial state into MuJoCo so FK is consistent.
         n = min(n_dofs, self._model.nq)
-        self._data.qpos[:n] = self._qpos[:n]
+        mj_qpos = self._cmd_to_mj_qpos(self._qpos)
+        self._data.qpos[:n] = mj_qpos[:n]
         mujoco.mj_forward(self._model, self._data)
+
+    def _cmd_to_mj_qpos(self, cmd: np.ndarray) -> np.ndarray:
+        """Map command-space positions to MuJoCo qpos.
+
+        For the gripper joint, [0, 1] is mapped to the actual MuJoCo joint range.
+        All other joints pass through unchanged.
+        """
+        mj = cmd.copy()
+        if self._gripper_qpos_range is not None and self._gripper_index is not None:
+            lo, hi = self._gripper_qpos_range
+            mj[self._gripper_index] = lo + cmd[self._gripper_index] * (hi - lo)
+        return mj
 
     # ---- Robot protocol ------------------------------------------------------
 
@@ -78,7 +101,8 @@ class SimRobot(Robot):
         with self._lock:
             self._qpos = pos
             n = min(len(pos), self._model.nq)
-            self._data.qpos[:n] = pos[:n]
+            mj_qpos = self._cmd_to_mj_qpos(pos)
+            self._data.qpos[:n] = mj_qpos[:n]
             mujoco.mj_forward(self._model, self._data)
 
     def command_target_vel(self, joint_vel: np.ndarray) -> None:
