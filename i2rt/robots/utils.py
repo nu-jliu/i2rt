@@ -6,7 +6,7 @@ import time
 import xml.etree.ElementTree as ET
 from copy import deepcopy
 from dataclasses import dataclass
-from functools import partial
+from functools import lru_cache, partial
 from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -37,6 +37,7 @@ class _GripperHWConfig:
     limiter_params: Optional[dict]  # raw limiter section from YAML
 
 
+@lru_cache(maxsize=None)
 def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
     """Load gripper hardware config from the YAML file for the given gripper type."""
     config_path = os.path.join(_CONFIG_DIR, f"{gripper_type_value}.yml")
@@ -50,7 +51,7 @@ def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
     if gripper_limits is not None:
         gripper_limits = tuple(gripper_limits)
 
-    return _GripperHWConfig(
+    cfg = _GripperHWConfig(
         mount_pos=j_mount["pos"],
         mount_quat=j_mount["quat"],
         mount_axis=j_mount["axis"],
@@ -62,6 +63,16 @@ def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
         motor_direction=int(raw.get("motor_direction", 1)),
         limiter_params=raw.get("limiter"),
     )
+
+    logger.info(f"  motor_type:          {cfg.motor_type}")
+    logger.info(f"  motor_kp:            {cfg.motor_kp}")
+    logger.info(f"  motor_kd:            {cfg.motor_kd}")
+    logger.info(f"  gripper_limits:      {cfg.gripper_limits}")
+    logger.info(f"  needs_calibration:   {cfg.needs_calibration}")
+    logger.info(f"  motor_direction:     {cfg.motor_direction}")
+    logger.info(f"  limiter_params:      {cfg.limiter_params}")
+
+    return cfg
 
 
 from i2rt.robot_models import (
@@ -595,7 +606,7 @@ def detect_gripper_limits(
     max_duration: float = 2.0,
     position_threshold: float = 0.01,
     check_interval: float = 0.1,
-) -> List[float]:
+) -> Tuple[float, float]:
     """
     Detect gripper limits by applying test torques and monitoring position changes.
 
@@ -667,10 +678,10 @@ def detect_gripper_limits(
     # Order based on motor direction
     if motor_direction > 0:
         # Positive direction: [max, min]
-        detected_limits = [max_pos, min_pos]
+        detected_limits = (max_pos, min_pos)
     else:
         # Negative direction: [min, max]
-        detected_limits = [min_pos, max_pos]
+        detected_limits = (min_pos, max_pos)
 
     logger.info(f"Motor direction: {motor_direction}, detected limits: {detected_limits}")
     return detected_limits

@@ -2,7 +2,7 @@ import logging
 import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
-from functools import partial
+from functools import lru_cache, partial
 from typing import Any, Callable, Optional
 
 import numpy as np
@@ -41,6 +41,7 @@ class _ArmHWConfig:
     gravity_comp_factor: np.ndarray  # per-joint factor, one per arm joint (6 elements)
 
 
+@lru_cache(maxsize=None)
 def _load_arm_config(arm_type: ArmType) -> _ArmHWConfig:
     """Load arm hardware config from the YAML file for the given arm type."""
     config_path = os.path.join(_CONFIG_DIR, f"{arm_type.value}.yml")

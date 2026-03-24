@@ -352,13 +352,7 @@ class MujocoControlInterface:
         qpos = self._robot.get_joint_pos()
         n = min(len(qpos), self._model.nu)
         for i in range(n):
-            if i == self._gripper_index and self._gripper_limits is not None:
-                # Normalize gripper to [0, 1] for the slider
-                lo, hi = float(min(self._gripper_limits)), float(max(self._gripper_limits))
-                raw = float(qpos[i])
-                self._data.ctrl[i] = np.clip((raw - lo) / (hi - lo) if hi > lo else 0.0, 0.0, 1.0)
-            else:
-                self._data.ctrl[i] = qpos[i]
+            self._data.ctrl[i] = qpos[i]
         self._prev_ctrl[:] = self._data.ctrl
         self._prev_mocap_pos[:] = self._data.mocap_pos[self._mocap_id]
         self._prev_mocap_quat[:] = self._data.mocap_quat[self._mocap_id]
@@ -378,12 +372,7 @@ class MujocoControlInterface:
         cmd = self._robot.get_joint_pos().copy()
         n = min(len(cmd), self._model.nu)
         for i in range(n):
-            if i == self._gripper_index and self._gripper_limits is not None:
-                # Denormalize [0, 1] slider → gripper range
-                lo, hi = float(min(self._gripper_limits)), float(max(self._gripper_limits))
-                cmd[i] = lo + float(self._data.ctrl[i]) * (hi - lo)
-            else:
-                cmd[i] = self._data.ctrl[i]
+            cmd[i] = self._data.ctrl[i]
         return cmd
 
     def _sync_mocap_to_sliders(self) -> None:
@@ -522,6 +511,7 @@ class MujocoControlInterface:
                                     self._in_collision = True
                             else:
                                 self._robot.command_joint_pos(cmd)
+                                logger.info(f"joint command: {cmd}")
                                 if self._in_collision:
                                     print("[control] Collision cleared — commands resumed")
                                     self._in_collision = False
@@ -542,6 +532,7 @@ class MujocoControlInterface:
                                         self._in_collision = True
                                 else:
                                     self._robot.command_joint_pos(cmd)
+                                    logger.info(f"IK joint command: {cmd}")
                                     # Update sliders to reflect the IK solution
                                     self._sync_sliders_to_ik(ik_q)
                                     if self._in_collision:
