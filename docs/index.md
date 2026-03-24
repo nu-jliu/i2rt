@@ -113,17 +113,17 @@ layout: page
   <div class="qs-code">
 
 ```python
-from i2rt.robots.motor_chain_robot import get_yam_robot
+from i2rt.robots.get_robot import get_yam_robot
 import numpy as np
 
 # Connect (zero-gravity mode by default)
 robot = get_yam_robot(channel="can0")
 
 # Read current joint positions
-q = robot.get_joint_pos()   # shape: (6,) radians
+q = robot.get_joint_pos()   # shape: (7,) with gripper / (6,) without
 
 # Command the arm home
-robot.command_joint_pos(np.zeros(6))
+robot.command_joint_pos(np.zeros(7))
 ```
 
   </div>

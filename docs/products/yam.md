@@ -37,7 +37,7 @@
 
 ## Grippers
 
-YAM supports four interchangeable end effectors:
+YAM supports multiple interchangeable end effectors:
 
 <MediaPlaceholder
   type="photo"
@@ -49,7 +49,9 @@ YAM supports four interchangeable end effectors:
 | `crank_4310` | Zero-linkage crank design — minimizes total gripper width for tight workspaces. |
 | `linear_3507` | Lightweight linear gripper with DM3507 motor. Requires starting in the closed position for calibration. |
 | `linear_4310` | Linear gripper with the heavier DM4310 motor. Marginally more gripping force. |
+| `flexible_4310` | Flexible soft tips with DM4310 motor. Conforms to object surfaces. Requires calibration. |
 | `yam_teaching_handle` | Leader arm handle with a trigger for gripper and two programmable buttons. Used for teleoperation. |
+| `no_gripper` | Arm only, no end effector attached. |
 
 ## 3D Model
 
@@ -82,17 +84,17 @@ i2rt/robot_models/arm/yam/
 4. Try the [Quick Start](/getting-started/quick-start)
 
 ```python
-from i2rt.robots.motor_chain_robot import get_yam_robot
+from i2rt.robots.get_robot import get_yam_robot
 import numpy as np
 
 # Connect to the arm (zero-gravity mode on by default)
 robot = get_yam_robot(channel="can0", zero_gravity_mode=True)
 
 # Read current joint positions
-joints = robot.get_joint_pos()  # shape: (6,) radians
+joints = robot.get_joint_pos()  # shape: (7,) with gripper / (6,) without
 
 # Command a target configuration
-robot.command_joint_pos(np.zeros(6))
+robot.command_joint_pos(np.zeros(7))
 ```
 
 ## Where to Buy

@@ -8,6 +8,7 @@ Usage:
     uv run python examples/gravity_compensation/gravity_compensation.py --sim
     uv run python examples/gravity_compensation/gravity_compensation.py --sim --log-torques
     uv run python examples/gravity_compensation/gravity_compensation.py --arm big_yam --gripper no_gripper --sim
+    uv run python examples/gravity_compensation/gravity_compensation.py --dt 0.01 --sim
     uv run python examples/gravity_compensation/gravity_compensation.py --channel can0 --log-torques
 """
 
@@ -91,6 +92,7 @@ if __name__ == "__main__":
     parser.add_argument("--gripper", type=str, default="linear_4310", choices=gripper_choices)
     parser.add_argument("--channel", type=str, default="can0", help="CAN channel")
     parser.add_argument("--sim", action="store_true", help="Use SimRobot")
+    parser.add_argument("--dt", type=float, default=None, help="Loop period in seconds (e.g. 0.01 for 100 Hz). If not set, runs as fast as possible.")
     parser.add_argument("--log-torques", action="store_true", help="Log gravity compensation torques each iteration")
     args = parser.parse_args()
 
@@ -144,6 +146,11 @@ if __name__ == "__main__":
 
             table = _format_state_table(joint_pos, joint_vel, joint_eff, torques, gripper_pos, loop_freq)
             print("\033[2J\033[H" + table, flush=True)
+
+            if args.dt is not None:
+                sleep_time = args.dt - (time.monotonic() - now)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
 
     except KeyboardInterrupt:
         print("\nShutting down...")

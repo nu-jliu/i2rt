@@ -61,10 +61,7 @@ Each arm requires a dedicated CAN channel. Assign persistent names using udev ru
 
 Plug one CANable device at a time and assign each arm a persistent name:
 
-```bash
-# Follow the instructions in:
-doc/set_persist_id_socket_can.md
-```
+See [Persistent CAN IDs](/getting-started/hardware-setup#persistent-can-ids) for detailed instructions.
 
 ### 2. Verify connectivity
 
@@ -108,7 +105,7 @@ Start with `--bilateral_kp 0.1` and increase gradually. Values above `0.3` make 
 Trajectory recording is built into the example:
 
 ```python
-from i2rt.robots.motor_chain_robot import get_yam_robot
+from i2rt.robots.get_robot import get_yam_robot
 # See examples/record_replay_trajectory/ for full dataset collection pipeline
 ```
 

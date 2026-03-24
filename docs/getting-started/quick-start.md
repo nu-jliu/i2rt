@@ -18,6 +18,9 @@ Enable zero-gravity mode to move the arm freely by hand:
 
 ```bash
 python i2rt/robots/motor_chain_robot.py --channel can0 --gripper_type linear_4310
+
+# Recommended: dedicated example with real-time joint state display
+python examples/gravity_compensation/gravity_compensation.py --channel can0
 ```
 
 The arm enters a gravity-compensated floating state. You can push it to any configuration; it holds position when released.
@@ -25,18 +28,18 @@ The arm enters a gravity-compensated floating state. You can push it to any conf
 ## 3. Python API: Move to a Joint Target
 
 ```python
-from i2rt.robots.motor_chain_robot import get_yam_robot
+from i2rt.robots.get_robot import get_yam_robot
 import numpy as np
 
 # Connect (zero-gravity on by default)
 robot = get_yam_robot(channel="can0", zero_gravity_mode=True)
 
-# Read current joint positions (6 values, in radians)
-q = robot.get_joint_pos()
+# Read current joint positions (radians)
+q = robot.get_joint_pos()  # shape: (7,) with gripper / (6,) without
 print("Current joints:", q)
 
 # Command a home position
-robot.command_joint_pos(np.zeros(6))
+robot.command_joint_pos(np.zeros(7))
 ```
 
 ## 4. Leader–Follower Teleoperation

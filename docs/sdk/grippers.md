@@ -1,6 +1,6 @@
 # Grippers
 
-YAM supports four interchangeable end effectors. The gripper type is specified when creating the robot:
+YAM supports multiple interchangeable end effectors. The gripper type is specified when creating the robot:
 
 ```python
 robot = get_yam_robot(channel="can0", gripper_type="linear_4310")
@@ -68,6 +68,19 @@ Standard linear gripper with the heavier DM4310 motor. Slightly more gripping fo
 
 ---
 
+### `flexible_4310`
+
+Linear gripper with a DM4310 motor and flexible soft tips. The compliant fingertips conform to object surfaces, providing a more secure grasp on irregular shapes.
+
+| Property | Value |
+|----------|-------|
+| Motor | DM4310 |
+| Mechanism | Linear actuator with flexible soft tips |
+| Calibration | **Required** — same as `linear_4310` |
+| Best for | Grasping irregular or delicate objects |
+
+---
+
 ### `yam_teaching_handle`
 
 The leader arm handle — not a manipulation gripper, but a hand controller for teleoperation.
@@ -87,6 +100,17 @@ For full usage — trigger reading, encoder calibration, and teleoperation setup
 
 ---
 
+### `no_gripper`
+
+No end effector attached. Use this when operating the arm without a gripper, or when a custom end effector is mounted externally. The robot has 6 DOF (arm joints only).
+
+| Property | Value |
+|----------|-------|
+| Motor | None |
+| Calibration | Not required |
+
+---
+
 ## Gripper Models
 
 MuJoCo and URDF models for each gripper:
@@ -102,6 +126,11 @@ i2rt/robot_models/gripper/
 ├── linear_4310/
 │   ├── linear_4310.xml
 │   └── assets/  gripper.stl  tip_left.stl  tip_right.stl
+├── flexible_4310/
+│   ├── flexible_4310.xml
+│   ├── robot.urdf
+│   ├── robot_fixed.urdf
+│   └── assets/  base.stl  linear_module.stl  soft_tips.stl
 ├── yam_teaching_handle/
 │   └── yam_teaching_handle.xml
 └── no_gripper/

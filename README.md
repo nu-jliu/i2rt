@@ -55,21 +55,27 @@ For persistent CAN names across multi-arm setups (YAM Cell), see [`docs/getting-
 
 ```bash
 python i2rt/robots/motor_chain_robot.py --channel can0 --gripper_type linear_4310
+
+# Recommended: dedicated example with real-time joint state display
+python examples/gravity_compensation/gravity_compensation.py --channel can0
+
+# Simulation (no hardware required)
+python examples/gravity_compensation/gravity_compensation.py --sim
 ```
 
 ### Python API
 
 ```python
-from i2rt.robots.motor_chain_robot import get_yam_robot
+from i2rt.robots.get_robot import get_yam_robot
 import numpy as np
 
 robot = get_yam_robot(channel="can0", gripper_type="linear_4310")
 
-# Read joint positions (radians)
-q = robot.get_joint_pos()   # shape: (6,)
+# Read joint positions (radians) — 6 arm joints + 1 gripper joint
+q = robot.get_joint_pos()   # shape: (7,)
 
-# Command a target configuration
-robot.command_joint_pos(np.zeros(6))
+# Command a target configuration (all joints including gripper)
+robot.command_joint_pos(np.zeros(7))
 ```
 
 ### Leader-follower teleoperation
@@ -105,7 +111,9 @@ python examples/minimum_gello/minimum_gello.py --mode visualizer_local
 | `crank_4310` | DM4310 | Zero-linkage crank — minimises gripper width |
 | `linear_3507` | DM3507 | Lightweight linear; start closed or run calibration |
 | `linear_4310` | DM4310 | Standard linear; slightly more force than 3507 |
+| `flexible_4310` | DM4310 | Flexible soft tips for grasping irregular objects; requires calibration |
 | `yam_teaching_handle` | — | Leader arm handle with trigger + 2 buttons. See [`docs/products/yam-leader.md`](./docs/products/yam-leader.md) |
+| `no_gripper` | — | Arm only, no end effector attached |
 
 The linear grippers require calibration because their motor travels more than 2π radians over the full stroke — either start with the gripper fully closed, or run the calibration routine.
 
@@ -133,6 +141,8 @@ Full setup, remote layout, API reference, and linear rail docs: [`docs/products/
 | Record & replay trajectory | `examples/record_replay_trajectory/` | [`docs/examples/record-replay.md`](./docs/examples/record-replay.md) |
 | Single motor PD control | `examples/single_motor_position_pd_control/` | [`docs/examples/motor-control.md`](./docs/examples/motor-control.md) |
 | MuJoCo control interface | `examples/control_with_mujoco/` | [`docs/examples/control-with-mujoco.md`](./docs/examples/control-with-mujoco.md) |
+| Gravity compensation | `examples/gravity_compensation/` | [`docs/examples/gravity-compensation.md`](./docs/examples/gravity-compensation.md) |
+| Viser control interface | `examples/control_with_viser/` | [`docs/examples/control-with-viser.md`](./docs/examples/control-with-viser.md) |
 
 ## Advanced: Motor Configuration
 

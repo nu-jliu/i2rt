@@ -19,6 +19,8 @@ I2RT Robotics builds an open ecosystem of robotic arms, mobile bases, and teleop
 | `crank_4310` | DM4310 | — | Zero-linkage crank, minimal width |
 | `linear_3507` | DM3507 | Light | Requires closed-position calibration |
 | `linear_4310` | DM4310 | Medium | Higher gripping force |
+| `flexible_4310` | DM4310 | Medium | Flexible soft tips for irregular objects |
 | `yam_teaching_handle` | — | — | Leader arm with trigger + 2 buttons |
+| `no_gripper` | — | — | Arm only, no end effector |
 
 See [Grippers SDK](/sdk/grippers) for API details.
