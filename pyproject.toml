@@ -100,6 +100,7 @@ omit = ["*exceptions.py"]
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.5.1",
     "pyright>=1.1.408",
     "pytest>=8.4.0",
     "pytest-xdist>=3.8.0",
