@@ -17,18 +17,80 @@ A Python client library for interacting with [I2RT](https://i2rt.com/) products 
 
 ## Installation
 
+### System Dependencies
+
 ```bash
-git clone https://github.com/i2rt-robotics/i2rt.git && cd i2rt
+sudo apt update
+sudo apt install build-essential python3-dev linux-headers-$(uname -r)
+```
+
+### With uv (recommended)
+
+```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 uv venv --python 3.11
 source .venv/bin/activate
 ```
 
+From source:
+
 ```bash
-sudo apt update
-sudo apt install build-essential python3-dev linux-headers-$(uname -r)
+git clone https://github.com/i2rt-robotics/i2rt.git && cd i2rt
 uv pip install -e .
+```
+
+Or install directly:
+
+```bash
+uv pip install "i2rt @ git+https://github.com/i2rt-robotics/i2rt.git"
+```
+
+Dev dependencies (pytest, ruff, pyright) — from a cloned repo only:
+
+```bash
+uv sync --dev
+```
+
+### With pip
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+```
+
+From source:
+
+```bash
+git clone https://github.com/i2rt-robotics/i2rt.git && cd i2rt
+pip install -e .
+```
+
+Or install directly:
+
+```bash
+pip install "i2rt @ git+https://github.com/i2rt-robotics/i2rt.git"
+```
+
+Dev dependencies — from a cloned repo only:
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+```python
+from i2rt.robots.get_robot import get_yam_robot
+import numpy as np
+
+robot = get_yam_robot(channel="can0", gripper_type="linear_4310")
+
+# Read joint positions (radians) — 6 arm joints + 1 gripper joint
+q = robot.get_joint_pos()   # shape: (7,)
+
+# Command a target configuration (all joints including gripper)
+robot.command_joint_pos(np.zeros(7))
 ```
 
 ## CAN Bus Setup
@@ -63,21 +125,6 @@ python examples/gravity_compensation/gravity_compensation.py --channel can0
 python examples/gravity_compensation/gravity_compensation.py --sim
 ```
 
-### Python API
-
-```python
-from i2rt.robots.get_robot import get_yam_robot
-import numpy as np
-
-robot = get_yam_robot(channel="can0", gripper_type="linear_4310")
-
-# Read joint positions (radians) — 6 arm joints + 1 gripper joint
-q = robot.get_joint_pos()   # shape: (7,)
-
-# Command a target configuration (all joints including gripper)
-robot.command_joint_pos(np.zeros(7))
-```
-
 ### Leader-follower teleoperation
 
 ```bash
@@ -90,7 +137,7 @@ python examples/minimum_gello/minimum_gello.py --gripper yam_teaching_handle --m
 
 - **Top button (press once):** enable synchronisation — follower tracks leader
 - **Top button (press again):** disable synchronisation
-- `--bilateral_kp` controls resistance felt on the leader (0.1–0.2 recommended)
+- `--bilateral_kp` controls resistance felt on the leader (0.1-0.2 recommended)
 
 To inspect leader arm output:
 
@@ -170,7 +217,7 @@ python i2rt/motor_config_tool/set_timeout.py --channel can0 --timeout
 python i2rt/motor_config_tool/set_zero.py --channel can0 --motor_id 1
 ```
 
-Run for each motor ID (1–6 for a standard YAM).
+Run for each motor ID (1-6 for a standard YAM).
 
 ## Contributing
 

@@ -92,7 +92,6 @@ def _load_joint_limits_from_xml(*xml_paths: str) -> np.ndarray:
                 joints.append((name, lo, hi))
                 seen.add(name)
 
-    joints.sort(key=lambda x: x[0])
     limits = np.array([[lo, hi] for _, lo, hi in joints])
     logger.info(f"  joint limits ({len(joints)} joints):")
     for name, lo, hi in joints:
@@ -198,7 +197,7 @@ def get_yam_robot(
         use_buffered_reader=False,
     )
     motor_states = motor_chain.read_states()
-    print(f"motor_states: {motor_states}")
+    logging.debug(f"motor_states: {motor_states}")
 
     logging.info(f"current_pos: {[m.pos for m in motor_states]}")
     for idx, state in enumerate(motor_states):

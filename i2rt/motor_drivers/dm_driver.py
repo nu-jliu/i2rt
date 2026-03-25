@@ -438,7 +438,7 @@ class DMChainCanInterface(MotorChain):
             starting_command.append(MotorCmd(torque=motor_state.torque))
         logging.info(f"Initializing motorchain with starting command: {starting_command}")
         self.commands = starting_command
-        self.command_lock = threading.Lock()
+        self.command_lock = threading.RLock()
 
         self.start_thread_flag = start_thread
         if start_thread:
@@ -623,13 +623,14 @@ class DMChainCanInterface(MotorChain):
             # Verify recovery by sending commands
             time.sleep(0.01)
             try:
-                motor_feedback = self._set_commands(self.commands)
-                if all(fb.error_code == "0x1" for fb in motor_feedback):
-                    logging.warning("All motors recovered successfully")
-                    with self.state_lock:
-                        self.state = motor_feedback
-                        self._update_absolute_positions(motor_feedback)
-                    return True
+                with self.command_lock:
+                    motor_feedback = self._set_commands(self.commands)
+                    if all(fb.error_code == "0x1" for fb in motor_feedback):
+                        logging.warning("All motors recovered successfully")
+                        with self.state_lock:
+                            self.state = motor_feedback
+                            self._update_absolute_positions(motor_feedback)
+                        return True
             except RuntimeError:
                 continue
 
