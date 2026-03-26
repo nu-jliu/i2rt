@@ -378,6 +378,7 @@ class DMChainCanInterface(MotorChain):
         control_mode: ControlMode = ControlMode.MIT,
         get_same_bus_device_driver: Optional[Callable] = None,
         use_buffered_reader: bool = False,  # buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader
+        report_interval: float = REPORT_INTERVAL,
     ):
         assert not use_buffered_reader, (
             "buffered reader is not very stable, the latest encoder fix allows us to use the non-buffered reader"
@@ -422,6 +423,8 @@ class DMChainCanInterface(MotorChain):
 
         self.state = None
         self.state_lock = threading.Lock()
+        self._report_interval = report_interval
+        self._rate_recorder = RateRecorder(name=self, report_interval=report_interval)
 
         self.same_bus_device_states = None
 
@@ -443,6 +446,10 @@ class DMChainCanInterface(MotorChain):
         self.start_thread_flag = start_thread
         if start_thread:
             self.start_thread()
+
+    @property
+    def comm_freq(self) -> float:
+        return self._rate_recorder.last_rate
 
     def __repr__(self) -> str:
         return f"DMChainCanInterface(channel={self.channel})"
@@ -521,12 +528,9 @@ class DMChainCanInterface(MotorChain):
         step_time_sum = 0.0
         step_time_count = 0
         report_start_time = time.time()
-        with RateRecorder(name=self) as rate_recorder:
+        with self._rate_recorder:
             while self.running:
                 try:
-                    # Maintain control frequency
-                    while time.time() - last_step_time < CONTROL_PERIOD - 0.001:
-                        time.sleep(0.001)
                     curr_time = time.time()
                     step_time = curr_time - last_step_time
                     last_step_time = curr_time
@@ -537,11 +541,11 @@ class DMChainCanInterface(MotorChain):
                     if step_time > EXPECTED_CONTROL_PERIOD:
                         step_time_exceed_count += 1
 
-                    # If step_time > EXPECTED_CONTROL_PERIOD, report every REPORT_INTERVAL seconds
-                    if step_time_exceed_count > 0 and curr_time - report_start_time >= REPORT_INTERVAL:
+                    # If step_time > EXPECTED_CONTROL_PERIOD, report every report_interval seconds
+                    if step_time_exceed_count > 0 and curr_time - report_start_time >= self._report_interval:
                         mean_step_time = step_time_sum / step_time_count if step_time_count > 0 else 0.0
                         logging.info(
-                            f"[{self} {REPORT_INTERVAL}s Report] step_time > {EXPECTED_CONTROL_PERIOD}s: {step_time_exceed_count} times, mean step_time: {mean_step_time:.6f} s"
+                            f"[{self} {self._report_interval}s Report] step_time > {EXPECTED_CONTROL_PERIOD}s: {step_time_exceed_count} times, mean step_time: {mean_step_time:.6f} s"
                         )
                         step_time_exceed_count = 0
                         step_time_sum = 0.0
@@ -585,8 +589,8 @@ class DMChainCanInterface(MotorChain):
                         with self.same_bus_device_lock:
                             # assume the same bus device is a passive input device (no commands to send) for now.
                             self.same_bus_device_states = self.same_bus_device_driver.read_states()
-                    time.sleep(0.0005)  # this is necessary, else the locks will not be released
-                    rate_recorder.track()
+                    time.sleep(0)  # yield GIL so other threads can acquire locks
+                    self._rate_recorder.track()
                 except Exception as e:
                     print(f"DM Error in control loop: {e}")
                     self.running = False
@@ -730,6 +734,12 @@ class MultiDMChainCanInterface(MotorChain):
     def __len__(self):
         return sum([len(inter) for inter in self.interfaces])
 
+    @property
+    def comm_freq(self) -> float:
+        """Return the minimum comm_freq across all sub-interfaces."""
+        freqs = [inter.comm_freq for inter in self.interfaces]
+        return min(freqs) if freqs else 0.0
+
     def set_commands(
         self,
         torques: np.ndarray,
@@ -763,30 +773,37 @@ if __name__ == "__main__":
 
     args = argparse.ArgumentParser()
     args.add_argument("--channel", type=str, default="can0")
+    args.add_argument(
+        "--motor-id",
+        type=lambda x: int(x, 0),
+        nargs="+",
+        default=[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07],
+        help="Motor IDs (e.g. 0x01 0x02 0x03 or 1 2 3)",
+    )
+    args.add_argument("--motor-type", type=str, default="DM4310")
     args.add_argument("--print_state", action="store_true")
     args.add_argument("--print_pos", action="store_true")
+    args.add_argument(
+        "--report-interval",
+        type=float,
+        default=REPORT_INTERVAL,
+        help=f"Rate/step-time report interval in seconds (default: {REPORT_INTERVAL})",
+    )
 
     args = args.parse_args()
     channel = args.channel
     motor_chain_name = "yam_real"
-    motor_list = [
-        [0x01, "DM4310"],
-        [0x02, "DM4310"],
-        [0x03, "DM4310"],
-        [0x04, "DM4310"],
-        [0x05, "DM4310"],
-        [0x06, "DM4310"],
-        [0x07, "DM4310"],
-    ]
+    motor_list = [[mid, args.motor_type] for mid in args.motor_id]
     motor_offsets = [0] * len(motor_list)
     motor_directions = [1] * len(motor_list)
     motor_chain = DMChainCanInterface(
         motor_list,
         motor_offsets,
         motor_directions,
-        channel,
-        motor_chain_name,
+        channel=channel,
+        motor_chain_name=motor_chain_name,
         receive_mode=ReceiveMode.p16,
+        report_interval=args.report_interval,
     )
     while True:
         motor_chain.set_commands(np.zeros(len(motor_list)))

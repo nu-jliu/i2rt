@@ -422,36 +422,57 @@ class MujocoControlInterface:
         required: np.ndarray,
         actual: np.ndarray,
         diff: np.ndarray,
+        temp_mos: Optional[np.ndarray] = None,
+        temp_rotor: Optional[np.ndarray] = None,
     ) -> str:
-        """Build a Unicode box-drawing table for torque data."""
+        """Build a Unicode box-drawing table for torque and temperature data."""
         lw, cw = 7, 16  # label width, column width
+        tw = 10  # temperature column width
         mode = "SIM" if self._is_sim else "REAL"
-        top = f"┌{'─' * lw}┬{'─' * cw}┬{'─' * cw}┬{'─' * cw}┐"
-        hdr = f"│{'Joint':^{lw}}│{'Required (Nm)':^{cw}}│{'Actual (Nm)':^{cw}}│{'Diff (Nm)':^{cw}}│"
-        sep = f"├{'─' * lw}┼{'─' * cw}┼{'─' * cw}┼{'─' * cw}┤"
-        btm = f"└{'─' * lw}┴{'─' * cw}┴{'─' * cw}┴{'─' * cw}┘"
+        has_temp = temp_mos is not None and temp_rotor is not None
+        if has_temp:
+            top = f"┌{'─' * lw}┬{'─' * cw}┬{'─' * cw}┬{'─' * cw}┬{'─' * tw}┬{'─' * tw}┐"
+            hdr = f"│{'Joint':^{lw}}│{'Required (Nm)':^{cw}}│{'Actual (Nm)':^{cw}}│{'Diff (Nm)':^{cw}}│{'MOS °C':^{tw}}│{'Rotor °C':^{tw}}│"
+            sep = f"├{'─' * lw}┼{'─' * cw}┼{'─' * cw}┼{'─' * cw}┼{'─' * tw}┼{'─' * tw}┤"
+            btm = f"└{'─' * lw}┴{'─' * cw}┴{'─' * cw}┴{'─' * cw}┴{'─' * tw}┴{'─' * tw}┘"
+        else:
+            top = f"┌{'─' * lw}┬{'─' * cw}┬{'─' * cw}┬{'─' * cw}┐"
+            hdr = f"│{'Joint':^{lw}}│{'Required (Nm)':^{cw}}│{'Actual (Nm)':^{cw}}│{'Diff (Nm)':^{cw}}│"
+            sep = f"├{'─' * lw}┼{'─' * cw}┼{'─' * cw}┼{'─' * cw}┤"
+            btm = f"└{'─' * lw}┴{'─' * cw}┴{'─' * cw}┴{'─' * cw}┘"
         rows = [f" Torque Monitor [{mode}]", top, hdr, sep]
         for i in range(len(required)):
-            rows.append(
-                f"│{f'j{i+1}':^{lw}}"
-                f"│{required[i]:>+12.4f}    "
-                f"│{actual[i]:>+12.4f}    "
-                f"│{diff[i]:>+12.4f}    │"
-            )
+            row = f"│{f'j{i + 1}':^{lw}}│{required[i]:>+12.4f}    │{actual[i]:>+12.4f}    │{diff[i]:>+12.4f}    │"
+            if has_temp:
+                row += f"{temp_mos[i]:>{tw - 1}.0f} │{temp_rotor[i]:>{tw - 1}.0f} │"
+            rows.append(row)
         rows.append(btm)
         return "\n".join(rows)
 
     def _log_torques(self) -> None:
-        """Display torque table, clearing the console each iteration."""
+        """Display torque and temperature table, clearing the console each iteration."""
         required = self._compute_sim_torques()
+        temp_mos = None
+        temp_rotor = None
         if self._is_sim:
             actual = np.zeros(self._n_arm)
         else:
             obs = self._robot.get_observations()
             actual = obs["joint_eff"][: self._n_arm]
+            if isinstance(self._robot, MotorChainRobot):
+                state = self._robot._joint_state
+                if state is not None:
+                    temp_mos = state.temp_mos[: self._n_arm]
+                    temp_rotor = state.temp_rotor[: self._n_arm]
         n = min(len(actual), len(required))
         diff = actual[:n] - required[:n]
-        table = self._format_torque_table(required[:n], actual[:n], diff)
+        table = self._format_torque_table(
+            required[:n],
+            actual[:n],
+            diff,
+            temp_mos=temp_mos[:n] if temp_mos is not None else None,
+            temp_rotor=temp_rotor[:n] if temp_rotor is not None else None,
+        )
         print("\033[2J\033[H" + table, flush=True)
 
     # ---- key callback ---------------------------------------------------------
