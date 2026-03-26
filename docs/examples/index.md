@@ -10,8 +10,6 @@ All examples live in the [`examples/`](https://github.com/i2rt-robotics/i2rt/tre
 | [Record & Replay Trajectory](/examples/record-replay) | 1+ YAM arm | Beginner |
 | [Single Motor PD Control](/examples/motor-control) | 1 DM motor | Beginner |
 | [MuJoCo Control Interface](/examples/control-with-mujoco) | None (sim) / 1 YAM arm | Beginner |
-| [Gravity Compensation](/examples/gravity-compensation) | None (sim) / 1 YAM arm | Beginner |
-| [Viser Control Interface](/examples/control-with-viser) | None (sim) / 1 YAM arm | Beginner |
 
 ## Running an Example
 
