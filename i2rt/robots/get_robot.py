@@ -104,6 +104,72 @@ def get_encoder_chain(can_interface: CanInterface) -> EncoderChain:
     return EncoderChain([0x50E], passive_encoder_reader)
 
 
+def _get_gripper_only_robot(
+    channel: str = "can0",
+    gripper_type: GripperType = GripperType.LINEAR_4310,
+    sim: bool = False,
+) -> "Robot":
+    """Create a gripper-only robot (no arm).
+
+    Args:
+        channel: CAN interface name (e.g. "can0"). Ignored in sim mode.
+        gripper_type: Which gripper to load. Must not be NO_GRIPPER.
+        sim: If True, return a SimRobot instead of connecting to real hardware.
+    """
+    if gripper_type == GripperType.NO_GRIPPER:
+        raise ValueError("gripper_type cannot be NO_GRIPPER when arm_type is NO_ARM")
+
+    xml_path = gripper_type.get_xml_path()
+    # One motor drives the gripper; extra XML joints are coupled via equality constraints.
+    n_dofs = 1
+
+    gripper_limits = gripper_type.get_gripper_limits()
+    gripper_needs_cal = gripper_type.get_gripper_needs_calibration()
+
+    if sim:
+        from i2rt.robots.sim_robot import SimRobot
+
+        sim_gripper_limits = gripper_limits
+        if sim_gripper_limits is None:
+            sim_gripper_limits = np.array([0.0, 1.0])
+
+        return SimRobot(
+            xml_path=xml_path,
+            n_dofs=n_dofs,
+            gripper_index=0,
+            gripper_limits=sim_gripper_limits,
+        )
+
+    # --- Real hardware path ---------------------------------------------------
+    motor_type = gripper_type.get_motor_type()
+    gripper_kp, gripper_kd = gripper_type.get_motor_kp_kd()
+    direction = gripper_type.get_motor_direction()
+
+    motor_chain = DMChainCanInterface(
+        [[0x07, motor_type]],
+        [0.0],
+        [direction],
+        channel,
+        motor_chain_name="gripper_only",
+        receive_mode=ReceiveMode.p16,
+        start_thread=True,
+    )
+
+    return MotorChainRobot(
+        motor_chain=motor_chain,
+        xml_path=xml_path,
+        use_gravity_comp=False,
+        joint_limits=None,
+        kp=np.array([gripper_kp]),
+        kd=np.array([gripper_kd]),
+        gripper_index=0,
+        gripper_limits=gripper_limits,
+        enable_gripper_calibration=gripper_needs_cal,
+        gripper_type=gripper_type,
+        zero_gravity_mode=False,
+    )
+
+
 def get_yam_robot(
     channel: str = "can0",
     arm_type: ArmType = ArmType.YAM,
@@ -120,7 +186,7 @@ def get_yam_robot(
 
     Args:
         channel: CAN interface name (e.g. "can0"). Ignored in sim mode.
-        arm_type: Which arm variant to use.
+        arm_type: Which arm variant to use. Use ``ArmType.NO_ARM`` for gripper-only.
         gripper_type: Which gripper (or NO_GRIPPER / YAM_TEACHING_HANDLE).
         zero_gravity_mode: Start in gravity-compensation mode.
         ee_mass: Optional end-effector mass override (kg) for MuJoCo inertial.
@@ -129,6 +195,10 @@ def get_yam_robot(
             Overrides the arm-type default when provided.
         sim: If True, return a SimRobot instead of connecting to real hardware.
     """
+    # --- Gripper-only path (no arm) -------------------------------------------
+    if arm_type == ArmType.NO_ARM:
+        return _get_gripper_only_robot(channel=channel, gripper_type=gripper_type, sim=sim)
+
     with_gripper = gripper_type not in (GripperType.YAM_TEACHING_HANDLE, GripperType.NO_GRIPPER)
     with_teaching_handle = gripper_type == GripperType.YAM_TEACHING_HANDLE
 
@@ -137,7 +207,9 @@ def get_yam_robot(
     if with_gripper:
         effective_gravity_comp = np.append(effective_gravity_comp, 1.0)
 
-    model_path = combine_arm_and_gripper_xml(arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia, gripper_type=gripper_type)
+    model_path = combine_arm_and_gripper_xml(
+        arm_type.get_xml_path(), gripper_type.get_xml_path(), ee_mass, ee_inertia, gripper_type=gripper_type
+    )
 
     # Load limits for motor-driven joints only (arm joints + last wrist joint from gripper XML).
     all_joint_limits = _load_joint_limits_from_xml(arm_type.get_xml_path(), gripper_type.get_xml_path())

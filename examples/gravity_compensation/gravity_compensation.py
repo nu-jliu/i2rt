@@ -1,15 +1,14 @@
-"""Gravity compensation example for i2rt robots.
+"""Gravity compensation example for i2rt robots (real hardware only).
 
 Starts the robot in zero-gravity mode so that only gravity-compensation
 torques are applied (no PD position control).  The arm floats freely and
 can be moved by hand.  Joint state is printed to the terminal in real time.
 
 Usage:
-    uv run python examples/gravity_compensation/gravity_compensation.py --sim
-    uv run python examples/gravity_compensation/gravity_compensation.py --sim --log-torques
-    uv run python examples/gravity_compensation/gravity_compensation.py --arm big_yam --gripper no_gripper --sim
-    uv run python examples/gravity_compensation/gravity_compensation.py --dt 0.01 --sim
+    uv run python examples/gravity_compensation/gravity_compensation.py --channel can0
     uv run python examples/gravity_compensation/gravity_compensation.py --channel can0 --log-torques
+    uv run python examples/gravity_compensation/gravity_compensation.py --arm big_yam --gripper no_gripper --channel can0
+    uv run python examples/gravity_compensation/gravity_compensation.py --dt 0.01 --channel can0
 """
 
 import sys
@@ -112,7 +111,6 @@ if __name__ == "__main__":
     parser.add_argument("--arm", type=str, default="yam", choices=arm_choices)
     parser.add_argument("--gripper", type=str, default="linear_4310", choices=gripper_choices)
     parser.add_argument("--channel", type=str, default="can0", help="CAN channel")
-    parser.add_argument("--sim", action="store_true", help="Use SimRobot")
     parser.add_argument(
         "--dt",
         type=float,
@@ -130,15 +128,7 @@ if __name__ == "__main__":
         arm_type=arm,
         gripper_type=gripper,
         zero_gravity_mode=True,
-        sim=args.sim,
     )
-
-    # For sim torque computation when --log-torques is used
-    kdl = None
-    if args.log_torques and args.sim:
-        from i2rt.utils.mujoco_utils import MuJoCoKDL
-
-        kdl = MuJoCoKDL(robot.xml_path)
 
     print("Gravity compensation active. Press Ctrl+C to stop.")
 
@@ -160,13 +150,8 @@ if __name__ == "__main__":
                 gripper_pos = float(gripper_pos[0])
 
             torques = None
-            if args.log_torques:
-                if args.sim and kdl is not None:
-                    torques = kdl.compute_inverse_dynamics(
-                        joint_pos, np.zeros_like(joint_pos), np.zeros_like(joint_pos)
-                    )
-                elif hasattr(robot, "get_motor_torques"):
-                    torques = robot.get_motor_torques()
+            if args.log_torques and hasattr(robot, "get_motor_torques"):
+                torques = robot.get_motor_torques()
 
             can_freq = None
             if hasattr(robot, "motor_chain") and hasattr(robot.motor_chain, "comm_freq"):

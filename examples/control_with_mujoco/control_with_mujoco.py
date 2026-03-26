@@ -8,9 +8,12 @@ Commands are blocked when a self-collision is detected.
 Usage:
     python examples/control_with_mujoco/control_with_mujoco.py --sim
     python examples/control_with_mujoco/control_with_mujoco.py --arm big_yam --gripper linear_4310 --sim
+    python examples/control_with_mujoco/control_with_mujoco.py --arm no_arm --gripper flexible_4310 --sim
     python examples/control_with_mujoco/control_with_mujoco.py --channel can0
 """
 
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -44,6 +47,9 @@ if __name__ == "__main__":
     arm = ArmType.from_string_name(args.arm)
     gripper = GripperType.from_string_name(args.gripper)
 
+    if arm == ArmType.NO_ARM and gripper == GripperType.NO_GRIPPER:
+        parser.error("--gripper cannot be 'no_gripper' when --arm is 'no_arm'")
+
     robot = get_yam_robot(
         channel=args.channel,
         arm_type=arm,
@@ -60,4 +66,14 @@ if __name__ == "__main__":
         site = "grasp_site"
 
     iface = MujocoControlInterface.from_robot(robot, ee_site=site, dt=args.dt, log_torques=args.log_torques)
-    iface.run()
+
+    try:
+        iface.run()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # iface.run() already caught the first Ctrl+C, but the MuJoCo viewer
+        # process can hang (gray/unresponsive window). Force-kill ourselves so
+        # the user doesn't have to manually terminate.
+        print("[control] Force killing process to close MuJoCo window")
+        os.kill(os.getpid(), signal.SIGKILL)

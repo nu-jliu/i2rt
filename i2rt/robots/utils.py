@@ -265,6 +265,7 @@ class ArmType(enum.Enum):
     YAM_PRO = "yam_pro"
     YAM_ULTRA = "yam_ultra"
     BIG_YAM = "big_yam"
+    NO_ARM = "no_arm"
 
     @classmethod
     def from_string_name(cls, name: str) -> "ArmType":
@@ -286,6 +287,8 @@ class ArmType(enum.Enum):
             ArmType.YAM_ULTRA: ARM_YAM_ULTRA_XML_PATH,
             ArmType.BIG_YAM: ARM_BIG_YAM_XML_PATH,
         }
+        if self == ArmType.NO_ARM:
+            raise ValueError("NO_ARM has no XML path; use the gripper XML directly.")
         if self not in _xml_map:
             raise ValueError(f"Unknown arm type: {self}")
         return _xml_map[self]

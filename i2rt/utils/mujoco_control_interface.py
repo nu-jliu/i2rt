@@ -480,6 +480,9 @@ class MujocoControlInterface:
     def _on_key(self, key: int) -> None:
         if key != 32:  # SPACE
             return
+        if self._is_sim:
+            # Sim mode: always stay in CONTROL mode
+            return
         if self._mode is Mode.VIS:
             self._mode = Mode.CONTROL
             self._sync_mocap_to_ee()
@@ -500,8 +503,12 @@ class MujocoControlInterface:
 
     def run(self) -> None:
         """Open the viewer and run the vis / control loop."""
-        print("[control] Starting in VIS (gravity comp) mode")
-        print("[control] Press SPACE to toggle CONTROL mode")
+        if self._is_sim:
+            self._mode = Mode.CONTROL
+            print("[control] Starting in CONTROL mode (sim)")
+        else:
+            print("[control] Starting in VIS (gravity comp) mode")
+            print("[control] Press SPACE to toggle CONTROL mode")
 
         with mujoco.viewer.launch_passive(
             self._model,
@@ -509,6 +516,11 @@ class MujocoControlInterface:
             key_callback=self._on_key,
         ) as viewer:
             viewer.opt.frame = mujoco.mjtFrame.mjFRAME_SITE
+            if self._is_sim:
+                self._set_marker_color(self._CTRL_RGBA)
+                self._mirror_robot()
+                self._sync_mocap_to_ee()
+                self._sync_sliders_to_robot()
             try:
                 while viewer.is_running():
                     self._mirror_robot()
