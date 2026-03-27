@@ -23,7 +23,6 @@ import time
 import numpy as np
 
 from i2rt.robots.get_robot import get_yam_robot
-from i2rt.robots.motor_chain_robot import MotorChainRobot
 from i2rt.robots.utils import ArmType, GripperType
 
 logging.basicConfig(level=logging.INFO)
@@ -159,7 +158,7 @@ if __name__ == "__main__":
 
             temp_mos = None
             temp_rotor = None
-            if isinstance(robot, MotorChainRobot) and robot._joint_state is not None:
+            if hasattr(robot, "_joint_state") and robot._joint_state is not None:
                 temp_mos = robot._joint_state.temp_mos
                 temp_rotor = robot._joint_state.temp_rotor
 

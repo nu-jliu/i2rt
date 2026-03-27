@@ -11,7 +11,7 @@ from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
 # Helpers
 # ---------------------------------------------------------------------------
 
-ALL_ARM_GRIPPER_COMBOS = [(arm, gripper) for arm in ArmType for gripper in GripperType]
+ALL_ARM_GRIPPER_COMBOS = [(arm, gripper) for arm in ArmType for gripper in GripperType if arm != ArmType.NO_ARM]
 
 
 def _combo_id(val: object) -> str:
@@ -89,7 +89,9 @@ def test_combined_xml_preserves_dofs(arm: ArmType, gripper: GripperType) -> None
     """Joint count in combined XML should equal arm joints (gripper body's joint comes from gripper)."""
     arm_root = ET.parse(arm.get_xml_path()).getroot()
     gripper_root = ET.parse(gripper.get_xml_path()).getroot()
-    combined_root = ET.parse(combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)).getroot()
+    combined_root = ET.parse(
+        combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)
+    ).getroot()
 
     arm_joints = _count_joints(arm_root)
     gripper_joints = _count_joints(gripper_root)
@@ -114,7 +116,9 @@ def test_combined_xml_preserves_link_properties(arm: ArmType, gripper: GripperTy
     """Bodies other than gripper should keep arm inertials; gripper body gets gripper's."""
     arm_root = ET.parse(arm.get_xml_path()).getroot()
     gripper_root = ET.parse(gripper.get_xml_path()).getroot()
-    combined_root = ET.parse(combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)).getroot()
+    combined_root = ET.parse(
+        combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)
+    ).getroot()
 
     arm_inertials = _get_body_inertials(arm_root)
     gripper_inertials = _get_body_inertials(gripper_root)

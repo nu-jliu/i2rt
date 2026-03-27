@@ -454,16 +454,13 @@ class MujocoControlInterface:
         required = self._compute_sim_torques()
         temp_mos = None
         temp_rotor = None
-        if self._is_sim:
-            actual = np.zeros(self._n_arm)
-        else:
-            obs = self._robot.get_observations()
-            actual = obs["joint_eff"][: self._n_arm]
-            if isinstance(self._robot, MotorChainRobot):
-                state = self._robot._joint_state
-                if state is not None:
-                    temp_mos = state.temp_mos[: self._n_arm]
-                    temp_rotor = state.temp_rotor[: self._n_arm]
+        obs = self._robot.get_observations()
+        actual = obs["joint_eff"][: self._n_arm]
+        if hasattr(self._robot, "_joint_state"):
+            state = self._robot._joint_state
+            if state is not None:
+                temp_mos = state.temp_mos[: self._n_arm]
+                temp_rotor = state.temp_rotor[: self._n_arm]
         n = min(len(actual), len(required))
         diff = actual[:n] - required[:n]
         table = self._format_torque_table(
