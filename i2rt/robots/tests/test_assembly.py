@@ -68,7 +68,7 @@ def _find_gripper(root: ET.Element) -> ET.Element | None:
 @pytest.mark.parametrize("arm,gripper", ALL_ARM_GRIPPER_COMBOS, ids=_combo_id)
 def test_combine_xml_produces_valid_xml(arm: ArmType, gripper: GripperType) -> None:
     """combine_arm_and_gripper_xml should produce valid XML for every combo."""
-    out_path = combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)
+    out_path = combine_arm_and_gripper_xml(arm, gripper)
 
     assert isinstance(out_path, str)
     assert out_path.endswith(".xml")
@@ -89,9 +89,7 @@ def test_combined_xml_preserves_dofs(arm: ArmType, gripper: GripperType) -> None
     """Joint count in combined XML should equal arm joints (gripper body's joint comes from gripper)."""
     arm_root = ET.parse(arm.get_xml_path()).getroot()
     gripper_root = ET.parse(gripper.get_xml_path()).getroot()
-    combined_root = ET.parse(
-        combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)
-    ).getroot()
+    combined_root = ET.parse(combine_arm_and_gripper_xml(arm, gripper)).getroot()
 
     arm_joints = _count_joints(arm_root)
     gripper_joints = _count_joints(gripper_root)
@@ -116,9 +114,7 @@ def test_combined_xml_preserves_link_properties(arm: ArmType, gripper: GripperTy
     """Bodies other than gripper should keep arm inertials; gripper body gets gripper's."""
     arm_root = ET.parse(arm.get_xml_path()).getroot()
     gripper_root = ET.parse(gripper.get_xml_path()).getroot()
-    combined_root = ET.parse(
-        combine_arm_and_gripper_xml(arm.get_xml_path(), gripper.get_xml_path(), gripper_type=gripper)
-    ).getroot()
+    combined_root = ET.parse(combine_arm_and_gripper_xml(arm, gripper)).getroot()
 
     arm_inertials = _get_body_inertials(arm_root)
     gripper_inertials = _get_body_inertials(gripper_root)
@@ -162,11 +158,10 @@ def test_combine_xml_with_custom_ee_mass_inertia(arm: ArmType, gripper: GripperT
     ee_inertia = rng.uniform(0.001, 1.0, size=10)  # 3 pos + 4 quat + 3 diaginertia
 
     out_path = combine_arm_and_gripper_xml(
-        arm.get_xml_path(),
-        gripper.get_xml_path(),
+        arm,
+        gripper,
         ee_mass=ee_mass,
         ee_inertia=ee_inertia,
-        gripper_type=gripper,
     )
     combined_root = ET.parse(out_path).getroot()
 

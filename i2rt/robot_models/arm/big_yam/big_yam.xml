@@ -31,12 +31,9 @@
               <inertial pos="0.000825911 3.55003e-05 -0.0375847" quat="0.288656 0.642392 0.646686 0.292929" mass="0.403307" diaginertia="0.000219794 0.000195686 0.000169647" />
               <joint name="joint5" pos="0 0 0" axis="0 0 1" range="-1.5708 1.5708" actuatorfrcrange="-10 10" />
               <geom pos="-0.10227 0.059995 -0.239052" quat="0.707105 0.707108 0 0" type="mesh" rgba="0.595185 0.535576 0.247693 1" mesh="link5" />
-              <body name="flange" pos="0 0 0" quat="0 0.707107 -0.707107 0">
+              <body name="link6" pos="0 0 0" quat="1 0 0 0">
                 <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9" />
-                <body name="link6" pos="0 0 0" quat="1 0 0 0">
-                  <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-9 1e-9 1e-9" />
-                  <joint name="joint6" pos="0 0 0" axis="0 0 1" range="-2.0944 2.0944" actuatorfrcrange="-10 10" />
-                </body>
+                <joint name="joint6" pos="0 0 0" axis="0 0 1" range="-2.0944 2.0944" actuatorfrcrange="-10 10" />
               </body>
             </body>
           </body>

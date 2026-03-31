@@ -5,6 +5,8 @@ import mink
 import mujoco
 import numpy as np
 
+from i2rt.robots.utils import ArmType, GripperType, combine_arm_and_gripper_xml
+
 
 class Kinematics:
     def __init__(self, xml_path: str, site_name: Optional[str]):
@@ -108,10 +110,7 @@ class Kinematics:
 
 
 def main() -> None:
-    from i2rt.robot_models import ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH
-    from i2rt.robots.utils import GripperType, combine_arm_and_gripper_xml
-
-    combined_path = combine_arm_and_gripper_xml(ARM_YAM_XML_PATH, GRIPPER_NO_GRIPPER_PATH, gripper_type=GripperType.NO_GRIPPER)
+    combined_path = combine_arm_and_gripper_xml(ArmType.YAM, GripperType.NO_GRIPPER)
     mj_model = Kinematics(combined_path, "grasp_site")
     q = np.zeros(6)
     pose = mj_model.fk(q)

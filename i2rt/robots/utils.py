@@ -38,15 +38,36 @@ class _GripperHWConfig:
 
 
 @lru_cache(maxsize=None)
-def _load_gripper_config(gripper_type_value: str) -> _GripperHWConfig:
-    """Load gripper hardware config from the YAML file for the given gripper type."""
+def _load_gripper_config(gripper_type_value: str, arm_type_value: str = "yam") -> _GripperHWConfig:
+    """Load gripper hardware config from the YAML file for the given gripper type.
+
+    Args:
+        gripper_type_value: The gripper type string (e.g. "linear_4310").
+        arm_type_value: The arm type string (e.g. "yam", "big_yam"). Used to
+            select the correct per-arm mounting transform.
+    """
     config_path = os.path.join(_CONFIG_DIR, f"{gripper_type_value}.yml")
-    logger.info(f"Loading gripper config from {config_path}")
+    logger.info(f"Loading gripper config from {config_path} (arm={arm_type_value})")
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
     # Support both legacy "joint6_mount" and new "last_joint_mount" key
-    j_mount = raw.get("last_joint_mount") or raw["joint6_mount"]
+    j_mount_raw = raw.get("last_joint_mount") or raw["joint6_mount"]
+
+    # Per-arm mount transforms: if the mount section has arm sub-keys, select by arm_type.
+    # Otherwise fall back to flat format for backward compatibility.
+    if "pos" in j_mount_raw:
+        # Legacy flat format
+        j_mount = j_mount_raw
+    else:
+        # Per-arm format: pick the sub-key matching arm_type_value
+        if arm_type_value not in j_mount_raw:
+            raise ValueError(
+                f"No mount transform for arm type {arm_type_value!r} in "
+                f"{gripper_type_value}.yml. Available: {list(j_mount_raw.keys())}"
+            )
+        j_mount = j_mount_raw[arm_type_value]
+
     gripper_limits = raw.get("gripper_limits")
     if gripper_limits is not None:
         gripper_limits = tuple(gripper_limits)
@@ -105,11 +126,10 @@ def _find_deepest_body(element: ET.Element) -> ET.Element:
 
 
 def combine_arm_and_gripper_xml(
-    arm_path: str,
-    gripper_path: str,
+    arm_type: "ArmType",
+    gripper_type: "GripperType",
     ee_mass: Optional[float] = None,
     ee_inertia: Optional[np.ndarray] = None,
-    gripper_type: Optional["GripperType"] = None,
 ) -> str:
     """Combine arm and gripper XML files into a single XML string.
 
@@ -117,35 +137,36 @@ def combine_arm_and_gripper_xml(
     child of the deepest body in the arm's kinematic chain.  The last body
     in the arm chain is located dynamically via ``_find_deepest_body``, and
     its ``pos``, ``quat``, and first joint's ``axis`` are set from the
-    gripper type's YAML config.
+    gripper type's per-arm YAML config.
 
     Args:
-        arm_path: Path to the arm MuJoCo XML file.
-        gripper_path: Path to the gripper MuJoCo XML file. If falsy, the arm XML
-            is used as-is (no gripper attachment).
+        arm_type: ArmType enum value. Determines arm XML path and selects the
+            correct per-arm mounting transform from the gripper's YAML config.
+        gripper_type: GripperType enum value. Determines gripper XML path and
+            mounting geometry from YAML config.
         ee_mass: Optional end-effector mass (kg) to override in gripper's inertial.
         ee_inertia: Optional end-effector inertia array. Expected as a flat array of
             10 elements: [ipos(3), quat(4), diaginertia(3)].
-        gripper_type: GripperType enum value. Used to set last-joint mounting geometry
-            from the gripper's YAML config.
 
     Returns:
         Path to the combined XML file written to /tmp/.
     """
+    arm_path = arm_type.get_xml_path()
+    gripper_path = gripper_type.get_xml_path()
+
     arm_tree = ET.parse(arm_path)
     arm_root = arm_tree.getroot()
 
-    # Set last-joint mounting geometry from gripper config
-    if gripper_type is not None:
-        cfg = _load_gripper_config(gripper_type.value)
-        worldbody = arm_root.find("worldbody")
-        if worldbody is not None:
-            last_link = _find_deepest_body(worldbody)
-            last_link.set("pos", cfg.mount_pos)
-            last_link.set("quat", cfg.mount_quat)
-            last_joint = last_link.find("joint")
-            if last_joint is not None:
-                last_joint.set("axis", cfg.mount_axis)
+    # Set last-joint mounting geometry from gripper config (per-arm)
+    cfg = _load_gripper_config(gripper_type.value, arm_type_value=arm_type.value)
+    worldbody = arm_root.find("worldbody")
+    if worldbody is not None:
+        last_link = _find_deepest_body(worldbody)
+        last_link.set("pos", cfg.mount_pos)
+        last_link.set("quat", cfg.mount_quat)
+        last_joint = last_link.find("joint")
+        if last_joint is not None:
+            last_joint.set("axis", cfg.mount_axis)
 
     # Resolve arm mesh paths to absolute
     arm_dir = os.path.dirname(os.path.abspath(arm_path))
@@ -255,7 +276,9 @@ def combine_arm_and_gripper_xml(
                 inertial.set("diaginertia", diagin)
 
     # write combined xml to /tmp/ and return filepath
-    out_path = tempfile.NamedTemporaryFile(suffix=".xml", prefix="i2rt_combined_", delete=False, dir="/tmp").name
+    out_path = tempfile.NamedTemporaryFile(
+        suffix=".xml", prefix=f"i2rt_{arm_type.value}_{gripper_type.value}_", delete=False, dir="/tmp"
+    ).name
     arm_tree.write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
 
