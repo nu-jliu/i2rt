@@ -1,12 +1,9 @@
 import logging
-import os
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
-from functools import lru_cache, partial
+from functools import partial
 from typing import Any, Callable, Optional
 
 import numpy as np
-import yaml
 
 from i2rt.motor_drivers.dm_driver import (
     CanInterface,
@@ -20,54 +17,11 @@ from i2rt.robots.robot import Robot
 from i2rt.robots.utils import (
     ArmType,
     GripperType,
+    _load_arm_config,
     combine_arm_and_gripper_xml,
 )
 
 logger = logging.getLogger(__name__)
-
-_CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
-
-
-# ---------------------------------------------------------------------------
-# Per-arm hardware config — loaded from YAML at runtime.
-# Only covers the 6 arm joints; the gripper motor (0x07) is appended at runtime.
-# ---------------------------------------------------------------------------
-@dataclass(frozen=True)
-class _ArmHWConfig:
-    motor_list: tuple  # ((can_id, motor_type_str), ...) — 6 arm joints
-    directions: tuple  # motor polarity (+1 / -1), one per arm joint
-    kp: np.ndarray  # position gain, one per arm joint
-    kd: np.ndarray  # damping gain,  one per arm joint
-    gravity_comp_factor: np.ndarray  # per-joint factor, one per arm joint (6 elements)
-
-
-@lru_cache(maxsize=None)
-def _load_arm_config(arm_type: ArmType) -> _ArmHWConfig:
-    """Load arm hardware config from the YAML file for the given arm type."""
-    config_path = os.path.join(_CONFIG_DIR, f"{arm_type.value}.yml")
-    logger.info(f"Loading arm config from {config_path}")
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
-
-    motor_list = tuple(tuple(m) for m in raw["motor_list"])
-    directions = tuple(raw["directions"])
-    kp = np.array(raw["kp"], dtype=float)
-    kd = np.array(raw["kd"], dtype=float)
-    gravity_comp_factor = np.array(raw["gravity_comp_factor"], dtype=float)
-
-    logger.info(f"  motor_list:          {motor_list}")
-    logger.info(f"  directions:          {directions}")
-    logger.info(f"  kp:                  {kp}")
-    logger.info(f"  kd:                  {kd}")
-    logger.info(f"  gravity_comp_factor: {gravity_comp_factor}")
-
-    return _ArmHWConfig(
-        motor_list=motor_list,
-        directions=directions,
-        kp=kp,
-        kd=kd,
-        gravity_comp_factor=gravity_comp_factor,
-    )
 
 
 def _load_joint_limits_from_xml(*xml_paths: str) -> np.ndarray:
@@ -123,8 +77,9 @@ def _get_gripper_only_robot(
     # One motor drives the gripper; extra XML joints are coupled via equality constraints.
     n_dofs = 1
 
-    gripper_limits = gripper_type.get_gripper_limits()
-    gripper_needs_cal = gripper_type.get_gripper_needs_calibration()
+    nominal_arm = ArmType.YAM
+    gripper_limits = gripper_type.get_gripper_limits(nominal_arm)
+    gripper_needs_cal = gripper_type.get_gripper_needs_calibration(nominal_arm)
 
     if sim:
         from i2rt.robots.sim_robot import SimRobot
@@ -141,9 +96,9 @@ def _get_gripper_only_robot(
         )
 
     # --- Real hardware path ---------------------------------------------------
-    motor_type = gripper_type.get_motor_type()
-    gripper_kp, gripper_kd = gripper_type.get_motor_kp_kd()
-    direction = gripper_type.get_motor_direction()
+    motor_type = gripper_type.get_motor_type(nominal_arm)
+    gripper_kp, gripper_kd = gripper_type.get_motor_kp_kd(nominal_arm)
+    direction = gripper_type.get_motor_direction(nominal_arm)
 
     motor_chain = DMChainCanInterface(
         [[0x07, motor_type]],
@@ -166,6 +121,7 @@ def _get_gripper_only_robot(
         gripper_limits=gripper_limits,
         enable_gripper_calibration=gripper_needs_cal,
         gripper_type=gripper_type,
+        arm_type=nominal_arm,
         zero_gravity_mode=False,
     )
 
@@ -229,17 +185,17 @@ def get_yam_robot(
     motor_offsets = [0.0] * len(motor_list)
 
     if with_gripper:
-        motor_type = gripper_type.get_motor_type()
-        gripper_kp, gripper_kd = gripper_type.get_motor_kp_kd()
+        motor_type = gripper_type.get_motor_type(arm_type)
+        gripper_kp, gripper_kd = gripper_type.get_motor_kp_kd(arm_type)
         logging.info(f"adding gripper motor type={motor_type}, kp={gripper_kp}, kd={gripper_kd}")
         motor_list.append([0x07, motor_type])
         motor_offsets.append(0.0)
-        directions.append(gripper_type.get_motor_direction())
+        directions.append(gripper_type.get_motor_direction(arm_type))
         kp = np.append(kp, gripper_kp)
         kd = np.append(kd, gripper_kd)
 
-    gripper_limits = gripper_type.get_gripper_limits() if with_gripper else None
-    gripper_needs_cal = gripper_type.get_gripper_needs_calibration() if with_gripper else False
+    gripper_limits = gripper_type.get_gripper_limits(arm_type) if with_gripper else None
+    gripper_needs_cal = gripper_type.get_gripper_needs_calibration(arm_type) if with_gripper else False
 
     if sim:
         from i2rt.robots.sim_robot import SimRobot
@@ -309,6 +265,7 @@ def get_yam_robot(
             gripper_limits=gripper_limits,
             enable_gripper_calibration=gripper_needs_cal,
             gripper_type=gripper_type,
+            arm_type=arm_type,
             limit_gripper_force=50.0,
         )
     return get_robot()

@@ -38,7 +38,7 @@ class _GripperHWConfig:
 
 
 @lru_cache(maxsize=None)
-def _load_gripper_config(gripper_type_value: str, arm_type_value: str = "yam") -> _GripperHWConfig:
+def _load_gripper_config(gripper_type_value: str, arm_type_value: str) -> _GripperHWConfig:
     """Load gripper hardware config from the YAML file for the given gripper type.
 
     Args:
@@ -94,6 +94,48 @@ def _load_gripper_config(gripper_type_value: str, arm_type_value: str = "yam") -
     logger.info(f"  limiter_params:      {cfg.limiter_params}")
 
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Per-arm hardware config — loaded from YAML at runtime.
+# Only covers the 6 arm joints; the gripper motor (0x07) is appended at runtime.
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class _ArmHWConfig:
+    motor_list: tuple  # ((can_id, motor_type_str), ...) — 6 arm joints
+    directions: tuple  # motor polarity (+1 / -1), one per arm joint
+    kp: np.ndarray  # position gain, one per arm joint
+    kd: np.ndarray  # damping gain,  one per arm joint
+    gravity_comp_factor: np.ndarray  # per-joint factor, one per arm joint (6 elements)
+
+
+@lru_cache(maxsize=None)
+def _load_arm_config(arm_type: "ArmType") -> _ArmHWConfig:
+    """Load arm hardware config from the YAML file for the given arm type."""
+    config_path = os.path.join(_CONFIG_DIR, f"{arm_type.value}.yml")
+    logger.info(f"Loading arm config from {config_path}")
+    with open(config_path) as f:
+        raw = yaml.safe_load(f)
+
+    motor_list = tuple(tuple(m) for m in raw["motor_list"])
+    directions = tuple(raw["directions"])
+    kp = np.array(raw["kp"], dtype=float)
+    kd = np.array(raw["kd"], dtype=float)
+    gravity_comp_factor = np.array(raw["gravity_comp_factor"], dtype=float)
+
+    logger.info(f"  motor_list:          {motor_list}")
+    logger.info(f"  directions:          {directions}")
+    logger.info(f"  kp:                  {kp}")
+    logger.info(f"  kd:                  {kd}")
+    logger.info(f"  gravity_comp_factor: {gravity_comp_factor}")
+
+    return _ArmHWConfig(
+        motor_list=motor_list,
+        directions=directions,
+        kp=kp,
+        kd=kd,
+        gravity_comp_factor=gravity_comp_factor,
+    )
 
 
 from i2rt.robot_models import (
@@ -158,7 +200,7 @@ def combine_arm_and_gripper_xml(
     arm_root = arm_tree.getroot()
 
     # Set last-joint mounting geometry from gripper config (per-arm)
-    cfg = _load_gripper_config(gripper_type.value, arm_type_value=arm_type.value)
+    cfg = _load_gripper_config(gripper_type.value, arm_type.value)
     worldbody = arm_root.find("worldbody")
     if worldbody is not None:
         last_link = _find_deepest_body(worldbody)
@@ -340,12 +382,12 @@ class GripperType(enum.Enum):
     def available_grippers(cls) -> List[str]:
         return [gripper.value for gripper in GripperType]
 
-    def get_gripper_limits(self) -> Optional[tuple[float, float]]:
-        cfg = _load_gripper_config(self.value)
+    def get_gripper_limits(self, arm_type: "ArmType") -> Optional[tuple[float, float]]:
+        cfg = _load_gripper_config(self.value, arm_type.value)
         return cfg.gripper_limits
 
-    def get_gripper_needs_calibration(self) -> bool:
-        cfg = _load_gripper_config(self.value)
+    def get_gripper_needs_calibration(self, arm_type: "ArmType") -> bool:
+        cfg = _load_gripper_config(self.value, arm_type.value)
         return cfg.needs_calibration
 
     def get_xml_path(self) -> str:
@@ -361,26 +403,26 @@ class GripperType(enum.Enum):
             raise ValueError(f"Unknown gripper type: {self}")
         return _xml_map[self]
 
-    def get_motor_kp_kd(self) -> tuple[float, float]:
-        cfg = _load_gripper_config(self.value)
+    def get_motor_kp_kd(self, arm_type: "ArmType") -> tuple[float, float]:
+        cfg = _load_gripper_config(self.value, arm_type.value)
         return cfg.motor_kp, cfg.motor_kd
 
-    def get_motor_type(self) -> str:
-        cfg = _load_gripper_config(self.value)
+    def get_motor_type(self, arm_type: "ArmType") -> str:
+        cfg = _load_gripper_config(self.value, arm_type.value)
         return cfg.motor_type
 
-    def get_motor_direction(self) -> int:
-        cfg = _load_gripper_config(self.value)
+    def get_motor_direction(self, arm_type: "ArmType") -> int:
+        cfg = _load_gripper_config(self.value, arm_type.value)
         return cfg.motor_direction
 
-    def get_gripper_limiter_params(self) -> tuple[float, float, float, callable]:
+    def get_gripper_limiter_params(self, arm_type: "ArmType") -> tuple[float, float, float, callable]:
         """
         clog_force_threshold: float,
         clog_speed_threshold: float,
         sign: float,
         gripper_force_torque_map: callable,
         """
-        cfg = _load_gripper_config(self.value)
+        cfg = _load_gripper_config(self.value, arm_type.value)
         lim = cfg.limiter_params
         if lim is None:
             return -1.0, -1.0, -1.0, None
@@ -548,6 +590,7 @@ class GripperForceLimiter:
         self,
         max_force: float,
         gripper_type: GripperType,
+        arm_type: "ArmType",
         kp: float,
         average_torque_window: float = 0.1,  # in seconds
         debug: bool = False,
@@ -561,7 +604,7 @@ class GripperForceLimiter:
         self.average_torque_window = average_torque_window
         self.debug = debug
         (self.clog_force_threshold, self.clog_speed_threshold, self.sign, _gripper_force_torque_map) = (
-            self.gripper_type.get_gripper_limiter_params()
+            self.gripper_type.get_gripper_limiter_params(arm_type)
         )
         self.gripper_force_torque_map = partial(
             _gripper_force_torque_map,
