@@ -65,13 +65,15 @@ class MujocoControlInterface:
         xml_path: str,
         ee_site: str = "grasp_site",
         dt: float = 0.02,
-        log_torques: bool = False,
+        log: bool = False,
     ):
         self._robot = robot
         self._ee_site = ee_site
         self._dt = dt
         self._mode = Mode.VIS
-        self._torque_logging = log_torques
+        self._logging = log
+        self._log_prev_time: float = 0.0
+        self._log_freq: float | None = None
 
         n_dofs = robot.num_dofs()
         robot_info = robot.get_robot_info() if hasattr(robot, "get_robot_info") else {}
@@ -123,9 +125,9 @@ class MujocoControlInterface:
         robot: MotorChainRobot,
         ee_site: str = "grasp_site",
         dt: float = 0.02,
-        log_torques: bool = False,
+        log: bool = False,
     ) -> "MujocoControlInterface":
-        return cls(robot, robot.xml_path, ee_site, dt, log_torques=log_torques)
+        return cls(robot, robot.xml_path, ee_site, dt, log=log)
 
     # ---- model construction ---------------------------------------------------
 
@@ -401,7 +403,7 @@ class MujocoControlInterface:
             pressed = bool(buttons[idx]) if (buttons and idx < len(buttons)) else False
             self._model.geom_rgba[geom_id] = _BTN_ON_RGBA if pressed else _BTN_OFF_RGBA
 
-    # ---- torque logging -------------------------------------------------------
+    # ---- logging -------------------------------------------------------------
 
     def _compute_sim_torques(self) -> np.ndarray:
         """Compute gravity-compensation torques via MuJoCo inverse dynamics.
@@ -417,56 +419,117 @@ class MujocoControlInterface:
         # qfrc_inverse has one entry per DoF
         return inv_data.qfrc_inverse[: self._n_arm].copy()
 
-    def _format_torque_table(
+    def _format_log_table(
         self,
+        joint_pos: np.ndarray,
+        joint_vel: np.ndarray,
+        joint_eff: np.ndarray,
         required: np.ndarray,
-        actual: np.ndarray,
         diff: np.ndarray,
+        gripper_pos: float | None = None,
+        loop_freq: float | None = None,
+        can_freq: float | None = None,
         temp_mos: Optional[np.ndarray] = None,
         temp_rotor: Optional[np.ndarray] = None,
     ) -> str:
-        """Build a Unicode box-drawing table for torque and temperature data."""
+        """Build a Unicode box-drawing table for joint state, torques, and temperatures."""
         lw, cw = 7, 16  # label width, column width
         tw = 10  # temperature column width
         mode = "SIM" if self._is_sim else "REAL"
         has_temp = temp_mos is not None and temp_rotor is not None
+
+        cols = ["Pos (rad)", "Vel (rad/s)", "Effort (Nm)", "Required (Nm)", "Diff (Nm)"]
+        top = f"┌{'─' * lw}" + "".join(f"┬{'─' * cw}" for _ in cols)
+        hdr = f"│{'Joint':^{lw}}" + "".join(f"│{c:^{cw}}" for c in cols)
+        sep = f"├{'─' * lw}" + "".join(f"┼{'─' * cw}" for _ in cols)
+        btm = f"└{'─' * lw}" + "".join(f"┴{'─' * cw}" for _ in cols)
         if has_temp:
-            top = f"┌{'─' * lw}┬{'─' * cw}┬{'─' * cw}┬{'─' * cw}┬{'─' * tw}┬{'─' * tw}┐"
-            hdr = f"│{'Joint':^{lw}}│{'Required (Nm)':^{cw}}│{'Actual (Nm)':^{cw}}│{'Diff (Nm)':^{cw}}│{'MOS °C':^{tw}}│{'Rotor °C':^{tw}}│"
-            sep = f"├{'─' * lw}┼{'─' * cw}┼{'─' * cw}┼{'─' * cw}┼{'─' * tw}┼{'─' * tw}┤"
-            btm = f"└{'─' * lw}┴{'─' * cw}┴{'─' * cw}┴{'─' * cw}┴{'─' * tw}┴{'─' * tw}┘"
+            top += f"┬{'─' * tw}┬{'─' * tw}┐"
+            hdr += f"│{'MOS °C':^{tw}}│{'Rotor °C':^{tw}}│"
+            sep += f"┼{'─' * tw}┼{'─' * tw}┤"
+            btm += f"┴{'─' * tw}┴{'─' * tw}┘"
         else:
-            top = f"┌{'─' * lw}┬{'─' * cw}┬{'─' * cw}┬{'─' * cw}┐"
-            hdr = f"│{'Joint':^{lw}}│{'Required (Nm)':^{cw}}│{'Actual (Nm)':^{cw}}│{'Diff (Nm)':^{cw}}│"
-            sep = f"├{'─' * lw}┼{'─' * cw}┼{'─' * cw}┼{'─' * cw}┤"
-            btm = f"└{'─' * lw}┴{'─' * cw}┴{'─' * cw}┴{'─' * cw}┘"
-        rows = [f" Torque Monitor [{mode}]", top, hdr, sep]
-        for i in range(len(required)):
-            row = f"│{f'j{i + 1}':^{lw}}│{required[i]:>+12.4f}    │{actual[i]:>+12.4f}    │{diff[i]:>+12.4f}    │"
+            top += "┐"
+            hdr += "│"
+            sep += "┤"
+            btm += "┘"
+
+        freq_str = f"  [loop {loop_freq:.1f} Hz]" if loop_freq is not None else ""
+        can_str = f"  [CAN {can_freq:.1f} Hz]" if can_freq is not None and can_freq > 0 else ""
+        rows = [f" Log [{mode}]{freq_str}{can_str}", top, hdr, sep]
+
+        for i in range(len(joint_pos)):
+            line = f"│{f'j{i + 1}':^{lw}}"
+            line += f"│{joint_pos[i]:>+12.4f}    "
+            line += f"│{joint_vel[i]:>+12.4f}    "
+            line += f"│{joint_eff[i]:>+12.4f}    "
+            if i < len(required):
+                line += f"│{required[i]:>+12.4f}    "
+                line += f"│{diff[i]:>+12.4f}    "
+            else:
+                line += f"│{'':>16}│{'':>16}"
+            if has_temp and i < len(temp_mos):
+                line += f"│{temp_mos[i]:>{tw - 1}.0f} │{temp_rotor[i]:>{tw - 1}.0f} │"
+            elif has_temp:
+                line += f"│{'':>{tw}}│{'':>{tw}}│"
+            else:
+                line += "│"
+            rows.append(line)
+
+        if gripper_pos is not None:
+            line = f"│{'grip':^{lw}}"
+            line += f"│{gripper_pos:>12.4f}    "
+            line += f"│{'':>16}" * 4
             if has_temp:
-                row += f"{temp_mos[i]:>{tw - 1}.0f} │{temp_rotor[i]:>{tw - 1}.0f} │"
-            rows.append(row)
+                line += f"│{'':>{tw}}│{'':>{tw}}│"
+            else:
+                line += "│"
+            rows.append(line)
+
         rows.append(btm)
         return "\n".join(rows)
 
-    def _log_torques(self) -> None:
-        """Display torque and temperature table, clearing the console each iteration."""
+    def _log(self) -> None:
+        """Display joint state and torque table, clearing the console each iteration."""
+        now = time.monotonic()
+        if self._log_prev_time > 0:
+            dt = now - self._log_prev_time
+            if dt > 0:
+                self._log_freq = 1.0 / dt
+        self._log_prev_time = now
+
+        obs = self._robot.get_observations()
+        joint_pos = obs["joint_pos"]
+        joint_vel = obs["joint_vel"]
+        joint_eff = obs["joint_eff"]
+        gripper_pos = obs.get("gripper_pos")
+        if gripper_pos is not None:
+            gripper_pos = float(gripper_pos[0])
+
         required = self._compute_sim_torques()
+        n = min(len(joint_eff[: self._n_arm]), len(required))
+        actual_arm = joint_eff[: self._n_arm][:n]
+        diff = actual_arm - required[:n]
+
+        can_freq = None
+        if hasattr(self._robot, "motor_chain") and hasattr(self._robot.motor_chain, "comm_freq"):
+            can_freq = self._robot.motor_chain.comm_freq
+
         temp_mos = None
         temp_rotor = None
-        obs = self._robot.get_observations()
-        actual = obs["joint_eff"][: self._n_arm]
-        if hasattr(self._robot, "_joint_state"):
-            state = self._robot._joint_state
-            if state is not None:
-                temp_mos = state.temp_mos[: self._n_arm]
-                temp_rotor = state.temp_rotor[: self._n_arm]
-        n = min(len(actual), len(required))
-        diff = actual[:n] - required[:n]
-        table = self._format_torque_table(
+        if hasattr(self._robot, "_joint_state") and self._robot._joint_state is not None:
+            temp_mos = self._robot._joint_state.temp_mos[: self._n_arm]
+            temp_rotor = self._robot._joint_state.temp_rotor[: self._n_arm]
+
+        table = self._format_log_table(
+            joint_pos,
+            joint_vel,
+            joint_eff,
             required[:n],
-            actual[:n],
             diff,
+            gripper_pos=gripper_pos,
+            loop_freq=self._log_freq,
+            can_freq=can_freq,
             temp_mos=temp_mos[:n] if temp_mos is not None else None,
             temp_rotor=temp_rotor[:n] if temp_rotor is not None else None,
         )
@@ -521,8 +584,8 @@ class MujocoControlInterface:
             try:
                 while viewer.is_running():
                     self._mirror_robot()
-                    if self._torque_logging:
-                        self._log_torques()
+                    if self._logging:
+                        self._log()
                     self._update_button_indicators()
 
                     if self._mode is Mode.VIS:

@@ -7,6 +7,7 @@ Commands are blocked when a self-collision is detected.
 
 Usage:
     python examples/control_with_mujoco/control_with_mujoco.py --sim
+    python examples/control_with_mujoco/control_with_mujoco.py --sim --log
     python examples/control_with_mujoco/control_with_mujoco.py --arm big_yam --gripper linear_4310 --sim
     python examples/control_with_mujoco/control_with_mujoco.py --arm no_arm --gripper flexible_4310 --sim
     python examples/control_with_mujoco/control_with_mujoco.py --channel can0
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--sim", action="store_true", help="Use SimRobot")
     parser.add_argument("--dt", type=float, default=0.02, help="Loop timestep (s)")
     parser.add_argument("--site", type=str, default=None, help="EE site name (auto-detected if omitted)")
-    parser.add_argument("--log-torques", action="store_true", help="Log motor torques each loop iteration")
+    parser.add_argument("--log", action="store_true", help="Log joint state and torques each loop iteration")
     args = parser.parse_args()
 
     arm = ArmType.from_string_name(args.arm)
@@ -65,7 +66,7 @@ if __name__ == "__main__":
     else:
         site = "grasp_site"
 
-    iface = MujocoControlInterface.from_robot(robot, ee_site=site, dt=args.dt, log_torques=args.log_torques)
+    iface = MujocoControlInterface.from_robot(robot, ee_site=site, dt=args.dt, log=args.log)
 
     try:
         iface.run()
